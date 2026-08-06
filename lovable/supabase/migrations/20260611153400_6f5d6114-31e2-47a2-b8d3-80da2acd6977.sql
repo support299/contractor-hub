@@ -1,0 +1,1 @@
+ALTER TABLE public.hub_forms ADD COLUMN IF NOT EXISTS extra_fields jsonb NOT NULL DEFAULT '[]'::jsonb;
