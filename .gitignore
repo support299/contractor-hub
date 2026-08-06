@@ -5,6 +5,11 @@
 .env.*
 !.env.example
 
+# Local / migration reference (not for deploy)
+MIGRATION.md
+PROJECT.md
+exports/
+
 # Python
 backend/.venv/
 backend/**/__pycache__/

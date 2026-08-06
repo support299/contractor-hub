@@ -1,12 +1,9 @@
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { AlertsBanner } from "@/components/AlertsBanner";
-import { Button } from "@/components/ui/button";
-import { clearAuth } from "@/lib/api";
 
 export default function AdminLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
     { to: "/admin/payrolls", label: "Payrolls" },
@@ -14,11 +11,6 @@ export default function AdminLayout() {
     { to: "/admin/resources", label: "Resources" },
     { to: "/admin/data", label: "Records" },
   ];
-
-  const logout = () => {
-    clearAuth();
-    navigate("/login", { replace: true });
-  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -31,9 +23,6 @@ export default function AdminLayout() {
               ADMIN
             </span>
           </div>
-          <Button variant="outline" size="sm" onClick={logout}>
-            Sign out
-          </Button>
         </div>
       </header>
       <div className="flex-1 px-6 py-6 grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-6 min-h-0">

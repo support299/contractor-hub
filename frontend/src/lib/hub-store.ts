@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, clearAuth, getSession, type Session } from "./api";
+import { api, getSession, type Session } from "./api";
 
 export type Role = "employee" | "contractor" | "admin";
 export type UserStatus = "active" | "inactive";
@@ -95,10 +95,6 @@ export async function updateUser(id: string, patch: Partial<Omit<HubUser, "id">>
 
 export async function deleteUser(id: string) {
   await api(`/users/${id}/`, { method: "DELETE" });
-  const session = getSession();
-  if (session && session.userId === id) {
-    clearAuth();
-  }
   emitChange();
 }
 

@@ -89,7 +89,9 @@ type RequestOpts = {
 };
 
 export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
-  const { method = "GET", body, auth = true, formData } = opts;
+  // Lovable parity: hub is open — JWT optional. Pass auth:true only when a token exists.
+  const { method = "GET", body, formData } = opts;
+  const auth = opts.auth ?? false;
   const headers: Record<string, string> = {};
   if (!formData) headers["Content-Type"] = "application/json";
 
@@ -104,7 +106,7 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
     });
 
   let res = await doFetch();
-  if (res.status === 401 && auth) {
+  if (res.status === 401 && auth && token) {
     token = await refreshAccess();
     if (token) {
       headers.Authorization = `Bearer ${token}`;

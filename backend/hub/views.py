@@ -23,7 +23,7 @@ from .models import (
     HubTrainingMaterial,
     HubUser,
 )
-from .permissions import IsAdminRole
+from .permissions import HubAccess, IsAdminRole, hub_open_access, user_is_hub_admin
 from .serializers import (
     FileUploadSerializer,
     HubAlertSerializer,
@@ -134,7 +134,7 @@ class MeView(APIView):
 class HubUserViewSet(viewsets.ModelViewSet):
     queryset = HubUser.objects.all()
     serializer_class = HubUserSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
     pagination_class = None
     filterset_fields = ["role", "status"]
     search_fields = ["name", "email", "phone"]
@@ -164,25 +164,16 @@ class HubFormViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "by_slug"):
             return [AllowAny()]
-        return [IsAuthenticated(), IsAdminRole()]
+        return [HubAccess()]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # Public list: active only unless authenticated admin
-        user = self.request.user
-        is_admin = (
-            user
-            and user.is_authenticated
-            and (
-                user.is_staff
-                or user.is_superuser
-                or (
-                    getattr(user, "hub_profile", None)
-                    and user.hub_profile.role == "admin"
-                )
-            )
-        )
-        if not is_admin and self.action in ("list", "retrieve", "by_slug"):
+        # Public list: active only unless hub admin / open-access mode
+        if not user_is_hub_admin(self.request.user) and self.action in (
+            "list",
+            "retrieve",
+            "by_slug",
+        ):
             qs = qs.filter(status=HubForm.Status.ACTIVE)
         return qs
 
@@ -205,7 +196,7 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [AllowAny()]
-        return [IsAuthenticated(), IsAdminRole()]
+        return [HubAccess()]
 
     def perform_create(self, serializer):
         submission = serializer.save()
@@ -265,7 +256,7 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
 class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
     queryset = HubLeaveApproval.objects.select_related("submission").all()
     serializer_class = HubLeaveApprovalSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
     pagination_class = None
     lookup_field = "submission_id"
 
@@ -327,7 +318,7 @@ def _filter_by_position(qs, request):
 class HubResourceFolderViewSet(viewsets.ModelViewSet):
     queryset = HubResourceFolder.objects.all()
     serializer_class = HubResourceFolderSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
     pagination_class = None
     filterset_fields = ["kind"]
     search_fields = ["name"]
@@ -336,7 +327,7 @@ class HubResourceFolderViewSet(viewsets.ModelViewSet):
 class HubTrainingMaterialViewSet(viewsets.ModelViewSet):
     queryset = HubTrainingMaterial.objects.select_related("folder").all()
     serializer_class = HubTrainingMaterialSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
     pagination_class = None
     search_fields = ["title", "category"]
     filterset_fields = ["folder"]
@@ -348,7 +339,7 @@ class HubTrainingMaterialViewSet(viewsets.ModelViewSet):
 class HubDocumentViewSet(viewsets.ModelViewSet):
     queryset = HubDocument.objects.select_related("folder").all()
     serializer_class = HubDocumentSerializer
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
     pagination_class = None
     search_fields = ["title", "category"]
     filterset_fields = ["folder"]
@@ -368,7 +359,7 @@ class HubAlertViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "active"):
             return [AllowAny()]
-        return [IsAuthenticated(), IsAdminRole()]
+        return [HubAccess()]
 
     @action(detail=False, methods=["get"])
     def active(self, request):
@@ -396,7 +387,7 @@ class FileUploadView(APIView):
         ser = FileUploadSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         bucket = ser.validated_data.get("bucket", "form-uploads")
-        if bucket == "hub-documents":
+        if bucket == "hub-documents" and not hub_open_access():
             if not IsAdminRole().has_permission(request, self):
                 return Response(
                     {"detail": "Admin required for document uploads"},
@@ -447,7 +438,7 @@ class SignedUrlView(APIView):
 
 
 class FileDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRole]
+    permission_classes = [HubAccess]
 
     def post(self, request):
         from hub.services.storage import delete_file
