@@ -37,6 +37,20 @@ export interface DocumentItem {
   created_at: string;
 }
 
+/** In-app pdf.js preview is capped to avoid OOM on the API/browser for large files. */
+export const PDF_INLINE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+
+export function isPdfFile(item: Pick<DocumentItem, "file_type" | "file_name">): boolean {
+  return (
+    (item.file_type || "").includes("pdf") ||
+    (item.file_name || "").toLowerCase().endsWith(".pdf")
+  );
+}
+
+export function canInlinePreviewPdf(item: Pick<DocumentItem, "file_type" | "file_name" | "file_size">): boolean {
+  return isPdfFile(item) && (item.file_size || 0) > 0 && item.file_size <= PDF_INLINE_PREVIEW_MAX_BYTES;
+}
+
 export async function fetchFolders(kind?: string): Promise<ResourceFolder[]> {
   const q = kind ? `?kind=${encodeURIComponent(kind)}` : "";
   const data = await api<ResourceFolder[]>(`/resource-folders/${q}`);

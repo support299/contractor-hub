@@ -49,6 +49,8 @@ import {
   fetchTraining,
   getMediaUrl,
   mediaContentUrl,
+  canInlinePreviewPdf,
+  isPdfFile,
   updateDocument,
   updateFolder,
   updateTraining,
@@ -683,19 +685,21 @@ function DocumentsTab({ canManage }: { canManage: boolean }) {
 
   const openViewer = async (item: DocumentItem) => {
     if (!item.file_path) return;
-    const isPdf =
-      (item.file_type || "").includes("pdf") ||
-      item.file_name.toLowerCase().endsWith(".pdf");
-    // PDFs: same-origin API stream (pdf.js cannot fetch S3 due to CORS).
-    // Images/other: signed URL is fine for <img> / new-tab.
-    if (isPdf) {
+    // Small PDFs: same-origin stream for pdf.js. Large PDFs / images: signed URL
+    // (large files skip in-app preview to avoid OOM; open in new tab instead).
+    if (canInlinePreviewPdf(item)) {
       setViewer(item);
       setViewerUrl(mediaContentUrl(item.file_path));
       return;
     }
-    const url = await getMediaUrl(item.file_path);
-    if (!url) return toast.error("Unable to open");
     setViewer(item);
+    setViewerUrl(null);
+    const url = await getMediaUrl(item.file_path);
+    if (!url) {
+      toast.error("Unable to open");
+      setViewer(null);
+      return;
+    }
     setViewerUrl(url);
   };
 
@@ -884,10 +888,15 @@ function DocumentViewerDialog({
 }) {
   const allowCopy = item?.allow_copy ?? false;
   const allowDownload = item?.allow_download ?? false;
-  const isPdf =
-    (item?.file_type || "").includes("pdf") ||
-    (item?.file_name || "").toLowerCase().endsWith(".pdf");
+  const isPdf = item ? isPdfFile(item) : false;
+  const inlinePdf = item ? canInlinePreviewPdf(item) : false;
   const isImage = (item?.file_type || "").startsWith("image/");
+  const sizeLabel = item ? formatFileSize(item.file_size) : "";
+
+  const openExternal = () => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <Dialog open={!!item} onOpenChange={(v) => !v && onClose()}>
@@ -909,11 +918,26 @@ function DocumentViewerDialog({
             if (!allowCopy) e.preventDefault();
           }}
         >
-          {!url ? (
+          {!item ? null : isPdf && !inlinePdf ? (
+            <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
+              <FileText className="h-10 w-10 text-muted-foreground" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Preview unavailable for large PDFs</p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  This file{sizeLabel ? ` (${sizeLabel})` : ""} is too large for in-app preview.
+                  Open it in a new tab to view.
+                </p>
+              </div>
+              <Button onClick={openExternal} disabled={!url}>
+                <ExternalLink className="h-4 w-4" />
+                {url ? "Open in new tab" : "Preparing link…"}
+              </Button>
+            </div>
+          ) : !url ? (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
               Loading…
             </div>
-          ) : isPdf ? (
+          ) : inlinePdf ? (
             <Suspense
               fallback={
                 <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
@@ -941,6 +965,12 @@ function DocumentViewerDialog({
                   ? " Use Download to open it."
                   : " Download is disabled for this document."}
               </p>
+              {url ? (
+                <Button variant="outline" onClick={openExternal}>
+                  <ExternalLink className="h-4 w-4" />
+                  Open in new tab
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
@@ -948,6 +978,12 @@ function DocumentViewerDialog({
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
+          {isPdf && !inlinePdf && url ? (
+            <Button variant="secondary" onClick={openExternal}>
+              <ExternalLink className="h-4 w-4" />
+              Open in new tab
+            </Button>
+          ) : null}
           {allowDownload && (
             <Button onClick={onDownload}>
               <Download className="h-4 w-4" />
