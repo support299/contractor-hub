@@ -62,6 +62,8 @@ class HubUser(TimeStampedModel):
     supplies_deduction = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    # False until staff completes Set password (or admin seeds a password)
+    password_configured = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["created_at"]

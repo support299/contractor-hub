@@ -33,6 +33,10 @@ export function getSession(): Session | null {
   }
 }
 
+export function isAdminSession(session: Session | null = getSession()): boolean {
+  return session?.role === "admin";
+}
+
 export function setAuth(access: string, refresh: string, user: AuthUser) {
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
@@ -75,7 +79,11 @@ export class ApiError extends Error {
   status: number;
   body: unknown;
   constructor(status: number, body: unknown) {
-    super(typeof body === "object" && body && "detail" in body ? String((body as { detail: unknown }).detail) : `HTTP ${status}`);
+    super(
+      typeof body === "object" && body && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `HTTP ${status}`,
+    );
     this.status = status;
     this.body = body;
   }
@@ -89,9 +97,8 @@ type RequestOpts = {
 };
 
 export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
-  // Lovable parity: hub is open — JWT optional. Pass auth:true only when a token exists.
   const { method = "GET", body, formData } = opts;
-  const auth = opts.auth ?? false;
+  const auth = opts.auth ?? true;
   const headers: Record<string, string> = {};
   if (!formData) headers["Content-Type"] = "application/json";
 
@@ -106,11 +113,13 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
     });
 
   let res = await doFetch();
-  if (res.status === 401 && auth && token) {
+  if (res.status === 401 && auth) {
     token = await refreshAccess();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
       res = await doFetch();
+    } else if (!getAccessToken()) {
+      // Session cleared — let caller handle; still throw
     }
   }
 
@@ -125,6 +134,19 @@ export async function loginPassword(username: string, password: string) {
   const data = await api<{ access: string; refresh: string; user: AuthUser }>(
     "/auth/login/",
     { method: "POST", body: { username, password }, auth: false },
+  );
+  setAuth(data.access, data.refresh, data.user);
+  return data;
+}
+
+export async function setPassword(email: string, password: string, passwordConfirm: string) {
+  const data = await api<{ access: string; refresh: string; user: AuthUser }>(
+    "/auth/set-password/",
+    {
+      method: "POST",
+      body: { email, password, password_confirm: passwordConfirm },
+      auth: false,
+    },
   );
   setAuth(data.access, data.refresh, data.user);
   return data;

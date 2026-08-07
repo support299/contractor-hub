@@ -43,6 +43,9 @@ class Command(BaseCommand):
         user.email = email
         user.save()
 
+        hub_user.password_configured = True
+        hub_user.save(update_fields=["password_configured", "updated_at"])
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"{'Created' if created else 'Updated'} admin '{email}' "

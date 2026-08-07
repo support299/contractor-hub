@@ -62,6 +62,9 @@ class HubUserSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    passwordConfigured = serializers.BooleanField(
+        source="password_configured", read_only=True
+    )
 
     class Meta:
         model = HubUser
@@ -83,10 +86,11 @@ class HubUserSerializer(serializers.ModelSerializer):
             "fcRate",
             "trRate",
             "suppliesDeduction",
+            "passwordConfigured",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "passwordConfigured", "created_at", "updated_at"]
 
 
 class HubFormSerializer(serializers.ModelSerializer):
@@ -367,8 +371,26 @@ class OtpLoginSerializer(serializers.Serializer):
 
 
 class PasswordLoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    username = serializers.CharField(help_text="Email or username")
     password = serializers.CharField(write_only=True)
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirm = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "Passwords do not match."}
+            )
+        return attrs
+
+
+class MeUpdateSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
 
 class MeSerializer(serializers.Serializer):

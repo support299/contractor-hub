@@ -23,7 +23,7 @@ from .models import (
     HubTrainingMaterial,
     HubUser,
 )
-from .permissions import HubAccess, IsAdminRole, hub_open_access, user_is_hub_admin
+from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
 from .serializers import (
     FileUploadSerializer,
     HubAlertSerializer,
@@ -34,17 +34,24 @@ from .serializers import (
     HubResourceFolderSerializer,
     HubTrainingMaterialSerializer,
     HubUserSerializer,
+    MeUpdateSerializer,
     OtpLoginSerializer,
     PasswordLoginSerializer,
+    SetPasswordSerializer,
 )
-from .services.auth import find_hub_user, tokens_for_hub_user
+from .services.auth import (
+    find_hub_user,
+    find_hub_user_for_login,
+    set_hub_user_password,
+    tokens_for_hub_user,
+)
 
 
 # ---------- Auth ----------
 
 
 class OtpLoginView(APIView):
-    """Email/phone + role + OTP → JWT (matches Lovable hub-store scaffolding)."""
+    """Email/phone + role + OTP → JWT (legacy scaffolding; unused until real SMS)."""
 
     permission_classes = [AllowAny]
 
@@ -65,23 +72,65 @@ class OtpLoginView(APIView):
 
 
 class PasswordLoginView(APIView):
-    """Django username/password → JWT (for seeded admin accounts)."""
+    """Email or username + password → JWT."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
         ser = PasswordLoginSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        user = authenticate(
-            username=ser.validated_data["username"],
-            password=ser.validated_data["password"],
-        )
+        ident = ser.validated_data["username"]
+        password = ser.validated_data["password"]
+
+        hub_user = find_hub_user_for_login(ident)
+        if hub_user:
+            if hub_user.status != HubUser.Status.ACTIVE:
+                return Response(
+                    {"detail": "Account inactive"}, status=status.HTTP_403_FORBIDDEN
+                )
+            if not hub_user.password_configured or not hub_user.auth_user_id:
+                return Response(
+                    {
+                        "detail": "Password not set yet. Use Set password to create one.",
+                        "code": "password_not_configured",
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            user = authenticate(
+                username=hub_user.auth_user.username, password=password
+            )
+            if not user:
+                return Response(
+                    {"detail": "Invalid credentials"},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            return Response(tokens_for_hub_user(hub_user))
+
+        # Fallback: Django user without hub profile (legacy staff)
+        user = authenticate(username=ident, password=password)
+        if not user:
+            # Try email as Django username
+            from django.contrib.auth.models import User as DjUser
+
+            try:
+                dj = DjUser.objects.get(email__iexact=ident)
+                user = authenticate(username=dj.username, password=password)
+            except DjUser.DoesNotExist:
+                user = None
         if not user:
             return Response(
                 {"detail": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED
             )
         profile = getattr(user, "hub_profile", None)
         if profile:
+            if not profile.password_configured:
+                return Response(
+                    {
+                        "detail": "Password not set yet. Use Set password to create one.",
+                        "code": "password_not_configured",
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
             return Response(tokens_for_hub_user(profile))
 
         from rest_framework_simplejwt.tokens import RefreshToken
@@ -102,6 +151,42 @@ class PasswordLoginView(APIView):
         )
 
 
+class SetPasswordView(APIView):
+    """First-time password for existing HubUser by email (no public signup)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from .services.auth import find_hub_user_by_email
+
+        ser = SetPasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        hub_user = find_hub_user_by_email(ser.validated_data["email"])
+        if not hub_user:
+            return Response(
+                {"detail": "No active staff account found for that email."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if hub_user.password_configured:
+            return Response(
+                {
+                    "detail": "Password already set. Sign in instead.",
+                    "code": "already_configured",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            set_hub_user_password(hub_user, ser.validated_data["password"])
+        except DjangoValidationError as e:
+            return Response(
+                {"detail": e.messages if hasattr(e, "messages") else [str(e)]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(tokens_for_hub_user(hub_user))
+
+
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -115,6 +200,7 @@ class MeView(APIView):
                     "identifier": profile.email or profile.phone,
                     "name": profile.name,
                     "email": profile.email,
+                    "phone": profile.phone,
                 }
             )
         return Response(
@@ -124,8 +210,27 @@ class MeView(APIView):
                 "identifier": request.user.username,
                 "name": request.user.get_full_name() or request.user.username,
                 "email": request.user.email,
+                "phone": "",
             }
         )
+
+    def patch(self, request):
+        profile = getattr(request.user, "hub_profile", None)
+        if not profile:
+            return Response(
+                {"detail": "No hub profile linked"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        ser = MeUpdateSerializer(data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        if "email" in ser.validated_data:
+            profile.email = ser.validated_data["email"] or ""
+            if profile.auth_user_id:
+                profile.auth_user.email = profile.email
+                profile.auth_user.save(update_fields=["email"])
+        if "phone" in ser.validated_data:
+            profile.phone = ser.validated_data["phone"] or ""
+        profile.save()
+        return self.get(request)
 
 
 # ---------- Users ----------
@@ -134,11 +239,15 @@ class MeView(APIView):
 class HubUserViewSet(viewsets.ModelViewSet):
     queryset = HubUser.objects.all()
     serializer_class = HubUserSerializer
-    permission_classes = [HubAccess]
     pagination_class = None
     filterset_fields = ["role", "status"]
     search_fields = ["name", "email", "phone"]
     ordering_fields = ["created_at", "name"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve", "sectors", "me"):
+            return [HubAccess()]
+        return [IsAdminRole()]
 
     @action(detail=False, methods=["get"], url_path="sectors")
     def sectors(self, request):
@@ -164,7 +273,7 @@ class HubFormViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "by_slug"):
             return [AllowAny()]
-        return [HubAccess()]
+        return [IsAdminRole()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -318,19 +427,27 @@ def _filter_by_position(qs, request):
 class HubResourceFolderViewSet(viewsets.ModelViewSet):
     queryset = HubResourceFolder.objects.all()
     serializer_class = HubResourceFolderSerializer
-    permission_classes = [HubAccess]
     pagination_class = None
     filterset_fields = ["kind"]
     search_fields = ["name"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [HubAccess()]
+        return [IsAdminRole()]
 
 
 class HubTrainingMaterialViewSet(viewsets.ModelViewSet):
     queryset = HubTrainingMaterial.objects.select_related("folder").all()
     serializer_class = HubTrainingMaterialSerializer
-    permission_classes = [HubAccess]
     pagination_class = None
     search_fields = ["title", "category"]
     filterset_fields = ["folder"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [HubAccess()]
+        return [IsAdminRole()]
 
     def get_queryset(self):
         return _filter_by_position(super().get_queryset(), self.request)
@@ -339,10 +456,14 @@ class HubTrainingMaterialViewSet(viewsets.ModelViewSet):
 class HubDocumentViewSet(viewsets.ModelViewSet):
     queryset = HubDocument.objects.select_related("folder").all()
     serializer_class = HubDocumentSerializer
-    permission_classes = [HubAccess]
     pagination_class = None
     search_fields = ["title", "category"]
     filterset_fields = ["folder"]
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [HubAccess()]
+        return [IsAdminRole()]
 
     def get_queryset(self):
         return _filter_by_position(super().get_queryset(), self.request)
@@ -359,7 +480,7 @@ class HubAlertViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve", "active"):
             return [AllowAny()]
-        return [HubAccess()]
+        return [IsAdminRole()]
 
     @action(detail=False, methods=["get"])
     def active(self, request):
@@ -387,7 +508,7 @@ class FileUploadView(APIView):
         ser = FileUploadSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         bucket = ser.validated_data.get("bucket", "form-uploads")
-        if bucket == "hub-documents" and not hub_open_access():
+        if bucket == "hub-documents":
             if not IsAdminRole().has_permission(request, self):
                 return Response(
                     {"detail": "Admin required for document uploads"},
@@ -438,7 +559,7 @@ class SignedUrlView(APIView):
 
 
 class FileDeleteView(APIView):
-    permission_classes = [HubAccess]
+    permission_classes = [IsAdminRole]
 
     def post(self, request):
         from hub.services.storage import delete_file

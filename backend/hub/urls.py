@@ -25,6 +25,7 @@ router.register(r"alerts", views.HubAlertViewSet, basename="hub-alerts")
 urlpatterns = [
     path("auth/otp-login/", views.OtpLoginView.as_view(), name="otp-login"),
     path("auth/login/", views.PasswordLoginView.as_view(), name="password-login"),
+    path("auth/set-password/", views.SetPasswordView.as_view(), name="set-password"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/me/", views.MeView.as_view(), name="me"),
     path("uploads/", views.FileUploadView.as_view(), name="file-upload"),

@@ -1,6 +1,7 @@
 """Auth helpers: ensure Django User exists for a HubUser and issue JWTs."""
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from django.utils.crypto import get_random_string
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -60,3 +61,42 @@ def find_hub_user(identifier: str, role: str) -> HubUser | None:
         if u.phone and u.phone.replace(" ", "") == phone_norm:
             return u
     return None
+
+
+def find_hub_user_by_email(email: str) -> HubUser | None:
+    email_norm = (email or "").strip().lower()
+    if not email_norm:
+        return None
+    for u in HubUser.objects.filter(status=HubUser.Status.ACTIVE).exclude(email=""):
+        if u.email.lower() == email_norm:
+            return u
+    return None
+
+
+def find_hub_user_for_login(username_or_email: str) -> HubUser | None:
+    """Resolve HubUser by email (preferred) or linked Django username."""
+    ident = (username_or_email or "").strip()
+    if not ident:
+        return None
+    by_email = find_hub_user_by_email(ident)
+    if by_email:
+        return by_email
+    try:
+        user = User.objects.get(username__iexact=ident)
+    except User.DoesNotExist:
+        return None
+    return getattr(user, "hub_profile", None)
+
+
+def set_hub_user_password(hub_user: HubUser, password: str) -> None:
+    validate_password(password)
+    user = ensure_auth_user(hub_user)
+    user.set_password(password)
+    if hub_user.email:
+        user.email = hub_user.email
+    if hub_user.role == HubUser.Role.ADMIN:
+        user.is_staff = True
+        user.is_superuser = True
+    user.save()
+    hub_user.password_configured = True
+    hub_user.save(update_fields=["password_configured", "updated_at"])

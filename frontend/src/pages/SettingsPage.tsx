@@ -240,6 +240,10 @@ export default function SettingsPage() {
           <section className="bg-card border rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b">
               <h2 className="font-semibold">Users ({users.length})</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                Staff need a work email to use Set password at /set-password. Login column shows who
+                has finished onboarding.
+              </p>
             </div>
         {users.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-muted-foreground">
@@ -255,6 +259,7 @@ export default function SettingsPage() {
                   <th className="px-4 py-3 font-medium">Phone</th>
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Login</th>
                   <th className="px-4 py-3 font-medium">Sector</th>
                   <th className="px-4 py-3 font-medium">Work days</th>
                   <th className="px-4 py-3 font-medium">Position</th>
@@ -302,6 +307,17 @@ export default function SettingsPage() {
                         }`}
                       >
                         {u.status === "active" ? "Active" : "Not active"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                          u.passwordConfigured
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {u.passwordConfigured ? "Ready" : "Needs set password"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
@@ -431,6 +447,9 @@ export default function SettingsPage() {
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="jane@example.com"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Required for first-time Set password. Staff sign in with this email afterward.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>

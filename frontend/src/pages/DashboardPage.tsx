@@ -10,7 +10,8 @@ import {
   CalendarIcon,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import { useUsers, type HubUser } from "@/lib/hub-store";
+import { useUsers, useSession, type HubUser } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
 import {
   Select,
   SelectContent,
@@ -237,14 +238,26 @@ function initialsOf(name: string) {
 
 export default function DashboardPage() {
   const users = useUsers();
+  const session = useSession();
+  const admin = isAdminSession(session);
   const activeUsers = useMemo(
     () => users.filter((u) => u.status === "active"),
     [users],
   );
   const [selectedId, setSelectedId] = useState<string>("");
-  const selected =
-    activeUsers.find((u) => u.id === selectedId) ?? activeUsers[0];
-  const selectedName = selected?.name ?? "";
+
+  useEffect(() => {
+    if (!admin && session?.userId) {
+      setSelectedId(session.userId);
+    }
+  }, [admin, session?.userId]);
+
+  const selected = admin
+    ? activeUsers.find((u) => u.id === selectedId) ?? activeUsers[0]
+    : activeUsers.find((u) => u.id === session?.userId) ??
+      activeUsers.find((u) => u.id === selectedId) ??
+      activeUsers[0];
+  const selectedName = selected?.name ?? session?.name ?? "";
   const firstName = selectedName.split(/\s+/)[0] ?? "there";
 
   // Default date range: current month
@@ -369,24 +382,27 @@ export default function DashboardPage() {
               Here's your performance overview for this period.
             </p>
           </div>
-          <div className="rounded-lg border bg-card px-4 py-2 flex items-center gap-2 shadow-sm">
-            <span className="text-sm font-medium">Staff:</span>
-            <Select
-              value={selected?.id ?? ""}
-              onValueChange={setSelectedId}
-            >
-              <SelectTrigger className="h-8 min-w-[200px] border-0 shadow-none focus:ring-0">
-                <SelectValue placeholder="Select staff" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeUsers.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {admin ? (
+            <div className="rounded-lg border bg-card px-4 py-2 flex items-center gap-2 shadow-sm">
+              <span className="text-sm font-medium">Staff:</span>
+              <Select value={selected?.id ?? ""} onValueChange={setSelectedId}>
+                <SelectTrigger className="h-8 min-w-[200px] border-0 shadow-none focus:ring-0">
+                  <SelectValue placeholder="Select staff" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="rounded-lg border bg-card px-4 py-2 text-sm text-muted-foreground shadow-sm">
+              Viewing: <span className="font-medium text-foreground">{selectedName || "you"}</span>
+            </div>
+          )}
         </div>
 
         {/* Performance header */}

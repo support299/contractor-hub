@@ -3,14 +3,18 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 def hub_open_access() -> bool:
-    """Lovable parity: shipped UI is open admin (no login gate)."""
-    return bool(getattr(settings, "HUB_OPEN_ACCESS", True))
+    """When True, hub APIs are open (legacy Lovable parity). Default False."""
+    return bool(getattr(settings, "HUB_OPEN_ACCESS", False))
+
+
+def user_is_authenticated(user) -> bool:
+    return bool(user and getattr(user, "is_authenticated", False))
 
 
 def user_is_hub_admin(user) -> bool:
     if hub_open_access():
         return True
-    if not user or not getattr(user, "is_authenticated", False):
+    if not user_is_authenticated(user):
         return False
     if user.is_staff or user.is_superuser:
         return True
@@ -27,21 +31,20 @@ class IsAdminRole(BasePermission):
 
 class HubAccess(BasePermission):
     """
-    Hub API access.
-    When HUB_OPEN_ACCESS=True (default): AllowAny — matches Lovable open RLS.
-    When False: require authenticated hub admin / Django staff.
+    Any authenticated hub user when HUB_OPEN_ACCESS=False.
+    When open: AllowAny.
     """
 
     def has_permission(self, request, view):
         if hub_open_access():
             return True
-        return user_is_hub_admin(request.user)
+        return user_is_authenticated(request.user)
 
 
 class IsAdminOrReadOnly(BasePermission):
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
-            return True
+            return HubAccess().has_permission(request, view)
         return IsAdminRole().has_permission(request, view)
 
 

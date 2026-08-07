@@ -187,5 +187,5 @@ SPECTACULAR_SETTINGS = {
 # Hub auth: shared OTP used by the original Lovable client scaffolding
 DEFAULT_OTP = os.getenv("DEFAULT_OTP", "201095")
 
-# Lovable parity: admin UI has no login gate (open RLS). Set False to require JWT.
-HUB_OPEN_ACCESS = os.getenv("HUB_OPEN_ACCESS", "True").lower() in ("1", "true", "yes")
+# Open hub without JWT (legacy). Production default: require authentication.
+HUB_OPEN_ACCESS = os.getenv("HUB_OPEN_ACCESS", "False").lower() in ("1", "true", "yes")

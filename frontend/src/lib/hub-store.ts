@@ -35,6 +35,7 @@ export interface HubUser {
   fcRate?: number;
   trRate?: number;
   suppliesDeduction?: number;
+  passwordConfigured?: boolean;
 }
 
 export { getSession };
@@ -71,6 +72,7 @@ function normalize(u: Record<string, unknown>): HubUser {
     fcRate: num(u.fcRate),
     trRate: num(u.trRate),
     suppliesDeduction: num(u.suppliesDeduction),
+    passwordConfigured: Boolean(u.passwordConfigured),
   };
 }
 
