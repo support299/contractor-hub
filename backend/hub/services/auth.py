@@ -47,6 +47,7 @@ def tokens_for_hub_user(hub_user: HubUser) -> dict:
             "identifier": hub_user.email or hub_user.phone,
             "name": hub_user.name,
             "email": hub_user.email,
+            "position": hub_user.position or "",
         },
     }
 

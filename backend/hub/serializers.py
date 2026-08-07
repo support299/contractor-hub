@@ -66,6 +66,17 @@ class HubUserSerializer(serializers.ModelSerializer):
         source="password_configured", read_only=True
     )
 
+    # Pay / integration fields — admin only in API responses
+    _ADMIN_ONLY_FIELDS = (
+        "regularRate",
+        "driveTimeRate",
+        "fcRate",
+        "trRate",
+        "suppliesDeduction",
+        "jobberId",
+        "ghlId",
+    )
+
     class Meta:
         model = HubUser
         fields = [
@@ -91,6 +102,17 @@ class HubUserSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "passwordConfigured", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request is not None:
+            from .permissions import user_is_hub_admin
+
+            if not user_is_hub_admin(request.user):
+                for key in self._ADMIN_ONLY_FIELDS:
+                    data.pop(key, None)
+        return data
 
 
 class HubFormSerializer(serializers.ModelSerializer):

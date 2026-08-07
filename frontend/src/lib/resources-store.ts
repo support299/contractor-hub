@@ -113,7 +113,6 @@ export async function getMediaUrl(path: string): Promise<string | null> {
   try {
     const data = await api<{ url: string }>(
       `/uploads/url/?path=${encodeURIComponent(path)}`,
-      { auth: false },
     );
     return data.url;
   } catch {

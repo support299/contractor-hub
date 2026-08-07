@@ -10,6 +10,7 @@ export type AuthUser = {
   identifier: string;
   name: string;
   email: string;
+  position?: string;
 };
 
 export type Session = {
@@ -18,6 +19,7 @@ export type Session = {
   identifier: string;
   name?: string;
   email?: string;
+  position?: string;
 };
 
 export function getAccessToken(): string | null {
@@ -46,6 +48,7 @@ export function setAuth(access: string, refresh: string, user: AuthUser) {
     identifier: user.identifier,
     name: user.name,
     email: user.email,
+    position: user.position || "",
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   window.dispatchEvent(new CustomEvent("cotg-storage"));

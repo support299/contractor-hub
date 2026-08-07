@@ -146,6 +146,7 @@ class PasswordLoginView(APIView):
                     "identifier": user.username,
                     "name": user.get_full_name() or user.username,
                     "email": user.email,
+                    "position": "",
                 },
             }
         )
@@ -201,6 +202,7 @@ class MeView(APIView):
                     "name": profile.name,
                     "email": profile.email,
                     "phone": profile.phone,
+                    "position": profile.position or "",
                 }
             )
         return Response(
@@ -211,6 +213,7 @@ class MeView(APIView):
                 "name": request.user.get_full_name() or request.user.username,
                 "email": request.user.email,
                 "phone": "",
+                "position": "",
             }
         )
 
@@ -397,30 +400,42 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
 
 def _filter_by_position(qs, request):
     """
-    Optional ?position= filters items visible to that staff position.
+    Restrict training/documents to the requester's team position.
+
     Empty visible_positions = visible to everyone.
+    Hub admins (and open-access mode) see all items.
+    Staff are filtered by HubUser.position from their auth profile —
+    client ?position= is ignored so it cannot be spoofed.
+    Staff with no position only see unrestricted items.
     Portable across SQLite (local) and Postgres (RDS).
     """
-    position = (request.query_params.get("position") or "").strip()
-    if not position:
+    if user_is_hub_admin(request.user):
         return qs
+
+    profile = getattr(request.user, "hub_profile", None)
+    position = (getattr(profile, "position", None) or "").strip()
 
     from django.db import connection
 
     if connection.vendor == "postgresql":
         from django.db.models import Q
 
+        if not position:
+            return qs.filter(Q(visible_positions=[]) | Q(visible_positions__isnull=True))
         return qs.filter(
-            Q(visible_positions=[]) | Q(visible_positions__contains=[position])
+            Q(visible_positions=[])
+            | Q(visible_positions__isnull=True)
+            | Q(visible_positions__contains=[position])
         )
 
-    # SQLite / others: filter in Python (resource lists are small)
-    base = qs.model.objects.all().only("pk", "visible_positions")
+    # SQLite / others: filter in Python within the existing queryset
     matching_ids = []
-    for obj in base:
-        positions = obj.visible_positions or []
-        if not positions or position in positions:
-            matching_ids.append(obj.pk)
+    for pk, positions in qs.values_list("pk", "visible_positions"):
+        positions = positions or []
+        if not positions:
+            matching_ids.append(pk)
+        elif position and position in positions:
+            matching_ids.append(pk)
     return qs.filter(pk__in=matching_ids)
 
 
@@ -540,7 +555,11 @@ class FileUploadView(APIView):
 
 
 class SignedUrlView(APIView):
-    """Return a media URL (local absolute URL or S3 pre-signed URL)."""
+    """Return a media URL (local absolute URL or S3 pre-signed URL).
+
+    Form-upload paths stay publicly fetchable (public forms).
+    Hub document paths require auth and respect position visibility.
+    """
 
     permission_classes = [AllowAny]
 
@@ -552,6 +571,22 @@ class SignedUrlView(APIView):
             return Response({"detail": "Invalid path"}, status=status.HTTP_400_BAD_REQUEST)
         if not file_exists(path):
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        is_hub_doc = path.startswith("hub-documents/") or "/hub-documents/" in path
+        if is_hub_doc:
+            if not HubAccess().has_permission(request, self):
+                return Response(
+                    {"detail": "Authentication required"},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            docs = HubDocument.objects.filter(file_path=path)
+            if docs.exists():
+                visible = _filter_by_position(docs, request)
+                if not visible.exists():
+                    return Response(
+                        {"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND
+                    )
+
         url = file_url(path)
         if url and not use_s3() and not url.startswith("http"):
             url = request.build_absolute_uri(url)

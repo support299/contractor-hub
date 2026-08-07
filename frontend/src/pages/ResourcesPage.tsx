@@ -34,7 +34,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
-import { POSITIONS } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
+import { POSITIONS, useSession } from "@/lib/hub-store";
 import {
   createDocument,
   createFolder,
@@ -113,13 +114,16 @@ type TabKey = "training" | "documents";
 
 export default function ResourcesPage() {
   const [tab, setTab] = useState<TabKey>("training");
+  const session = useSession();
+  const canManage = isAdminSession(session);
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Resources</h1>
         <p className="text-sm text-muted-foreground">
-          Organize training and documents in folders. Control which staff positions can see each
-          item, and whether documents may be downloaded or copied.
+          {canManage
+            ? "Organize training and documents in folders. Control which staff positions can see each item, and whether documents may be downloaded or copied."
+            : "Browse training and documents available for your team position."}
         </p>
       </div>
       <div className="flex gap-2 border-b">
@@ -142,7 +146,11 @@ export default function ResourcesPage() {
           </button>
         ))}
       </div>
-      {tab === "training" ? <TrainingTab /> : <DocumentsTab />}
+      {tab === "training" ? (
+        <TrainingTab canManage={canManage} />
+      ) : (
+        <DocumentsTab canManage={canManage} />
+      )}
     </div>
   );
 }
@@ -182,12 +190,14 @@ function FolderSidebar({
   selectedId,
   onSelect,
   onChanged,
+  canManage,
 }: {
   kind: "training" | "documents";
   folders: ResourceFolder[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onChanged: () => void;
+  canManage: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ResourceFolder | null>(null);
@@ -237,9 +247,11 @@ function FolderSidebar({
     <aside className="w-full md:w-56 shrink-0 space-y-2">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Folders</h2>
-        <Button size="icon" variant="ghost" onClick={startAdd} title="New folder">
-          <FolderPlus className="h-4 w-4" />
-        </Button>
+        {canManage ? (
+          <Button size="icon" variant="ghost" onClick={startAdd} title="New folder">
+            <FolderPlus className="h-4 w-4" />
+          </Button>
+        ) : null}
       </div>
       <button
         type="button"
@@ -266,49 +278,55 @@ function FolderSidebar({
             <Folder className="h-4 w-4 shrink-0" />
             <span className="truncate">{f.name}</span>
           </button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100"
-            onClick={() => startEdit(f)}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100"
-            onClick={() => remove(f)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {canManage ? (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                onClick={() => startEdit(f)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                onClick={() => remove(f)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          ) : null}
         </div>
       ))}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? "Rename folder" : "New folder"}</DialogTitle>
-          </DialogHeader>
-          <div>
-            <Label>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Onboarding" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={save}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {canManage ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editing ? "Rename folder" : "New folder"}</DialogTitle>
+            </DialogHeader>
+            <div>
+              <Label>Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Onboarding" />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={save}>Save</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </aside>
   );
 }
 
 /* ---------------- Training ---------------- */
 
-function TrainingTab() {
+function TrainingTab({ canManage }: { canManage: boolean }) {
   const [folders, setFolders] = useState<ResourceFolder[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [items, setItems] = useState<TrainingMaterial[]>([]);
@@ -364,6 +382,7 @@ function TrainingTab() {
         selectedId={folderId}
         onSelect={setFolderId}
         onChanged={loadFolders}
+        canManage={canManage}
       />
       <div className="flex-1 space-y-4 min-w-0">
         <div className="flex items-center justify-between gap-2">
@@ -374,15 +393,17 @@ function TrainingTab() {
             <ChevronRight className="h-3 w-3" />
             {visible.length} item(s)
           </p>
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Training
-          </Button>
+          {canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Training
+            </Button>
+          ) : null}
         </div>
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
@@ -423,28 +444,30 @@ function TrainingTab() {
                   <div className="p-4 flex-1 flex flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold leading-tight">{m.title}</h3>
-                      <div className="flex gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditing(m);
-                            setOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDelete(m.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      {canManage ? (
+                        <div className="flex gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditing(m);
+                              setOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(m.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                     {(m.folder_name || m.category) && (
                       <span className="self-start text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                         {m.folder_name || m.category}
                       </span>
                     )}
-                    {m.visible_positions?.length > 0 && (
+                    {canManage && m.visible_positions?.length > 0 && (
                       <p className="text-xs text-muted-foreground">
                         Positions: {m.visible_positions.join(", ")}
                       </p>
@@ -472,17 +495,19 @@ function TrainingTab() {
           </div>
         )}
       </div>
-      <TrainingDialog
-        open={open}
-        onOpenChange={setOpen}
-        editing={editing}
-        folders={folders}
-        defaultFolderId={folderId}
-        onSaved={() => {
-          setOpen(false);
-          load();
-        }}
-      />
+      {canManage ? (
+        <TrainingDialog
+          open={open}
+          onOpenChange={setOpen}
+          editing={editing}
+          folders={folders}
+          defaultFolderId={folderId}
+          onSaved={() => {
+            setOpen(false);
+            load();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -600,7 +625,7 @@ function TrainingDialog({
 
 /* ---------------- Documents ---------------- */
 
-function DocumentsTab() {
+function DocumentsTab({ canManage }: { canManage: boolean }) {
   const [folders, setFolders] = useState<ResourceFolder[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [items, setItems] = useState<DocumentItem[]>([]);
@@ -683,6 +708,7 @@ function DocumentsTab() {
         selectedId={folderId}
         onSelect={setFolderId}
         onChanged={loadFolders}
+        canManage={canManage}
       />
       <div className="flex-1 space-y-4 min-w-0">
         <div className="flex items-center justify-between gap-2">
@@ -692,15 +718,17 @@ function DocumentsTab() {
               : "All documents"}{" "}
             · {visible.length} item(s)
           </p>
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Document
-          </Button>
+          {canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Document
+            </Button>
+          ) : null}
         </div>
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
@@ -736,19 +764,21 @@ function DocumentsTab() {
                         {d.folder_name || d.category}
                       </span>
                     )}
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {!d.allow_download && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                          No download
-                        </span>
-                      )}
-                      {!d.allow_copy && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                          Copy protected
-                        </span>
-                      )}
-                    </div>
-                    {d.visible_positions?.length > 0 && (
+                    {canManage ? (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {!d.allow_download && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                            No download
+                          </span>
+                        )}
+                        {!d.allow_copy && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                            Copy protected
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
+                    {canManage && d.visible_positions?.length > 0 && (
                       <p className="text-xs text-muted-foreground mt-1 truncate">
                         Positions: {d.visible_positions.join(", ")}
                       </p>
@@ -768,25 +798,29 @@ function DocumentsTab() {
                         <Download className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditing(d);
-                        setOpen(true);
-                      }}
-                      title="Edit"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleDelete(d)}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canManage ? (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditing(d);
+                            setOpen(true);
+                          }}
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleDelete(d)}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -795,17 +829,19 @@ function DocumentsTab() {
         )}
       </div>
 
-      <DocumentDialog
-        open={open}
-        onOpenChange={setOpen}
-        editing={editing}
-        folders={folders}
-        defaultFolderId={folderId}
-        onSaved={() => {
-          setOpen(false);
-          load();
-        }}
-      />
+      {canManage ? (
+        <DocumentDialog
+          open={open}
+          onOpenChange={setOpen}
+          editing={editing}
+          folders={folders}
+          defaultFolderId={folderId}
+          onSaved={() => {
+            setOpen(false);
+            load();
+          }}
+        />
+      ) : null}
 
       <DocumentViewerDialog
         item={viewer}

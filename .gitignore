@@ -9,6 +9,7 @@
 MIGRATION.md
 PROJECT.md
 exports/
+scripts/
 
 # Python
 backend/.venv/
