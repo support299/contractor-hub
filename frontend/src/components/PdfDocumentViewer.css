@@ -1,0 +1,10 @@
+/* Enforce allow-copy on pdf.js text layer (parent select-* alone is not always enough). */
+.pdf-viewer-protected .textLayer :is(span, br) {
+  user-select: none !important;
+  cursor: default !important;
+}
+
+.pdf-viewer-copyable .textLayer :is(span, br) {
+  user-select: text !important;
+  cursor: text !important;
+}

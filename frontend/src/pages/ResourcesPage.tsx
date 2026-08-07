@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,10 @@ import {
   type ResourceFolder,
   type TrainingMaterial,
 } from "@/lib/resources-store";
+
+const PdfDocumentViewer = lazy(() =>
+  import("@/components/PdfDocumentViewer").then((m) => ({ default: m.PdfDocumentViewer })),
+);
 
 function getVideoThumbnail(url: string): string | null {
   if (!url) return null;
@@ -882,7 +886,7 @@ function DocumentViewerDialog({
         </DialogHeader>
         <div
           className={`flex-1 min-h-0 rounded-md border bg-muted/30 overflow-hidden ${
-            allowCopy ? "" : "select-none"
+            allowCopy ? "select-text" : "select-none"
           }`}
           onContextMenu={(e) => {
             if (!allowCopy) e.preventDefault();
@@ -899,18 +903,22 @@ function DocumentViewerDialog({
               Loading…
             </div>
           ) : isPdf ? (
-            <iframe
-              title={item?.title}
-              src={`${url}#toolbar=${allowDownload ? 1 : 0}`}
-              className="w-full h-full border-0"
-            />
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  Loading PDF viewer…
+                </div>
+              }
+            >
+              <PdfDocumentViewer url={url} title={item?.title} allowCopy={allowCopy} />
+            </Suspense>
           ) : isImage ? (
             <div className="h-full flex items-center justify-center p-4">
               <img
                 src={url}
                 alt={item?.title}
                 className="max-h-full max-w-full object-contain"
-                draggable={allowDownload}
+                draggable={allowDownload || allowCopy}
               />
             </div>
           ) : (
@@ -1063,8 +1071,8 @@ function DocumentDialog({
               Allow copy / select text in viewer
             </label>
             <p className="text-xs text-muted-foreground">
-              Copy protection is a soft deterrent (blocks select/right-click in the viewer). It is
-              not true DRM.
+              For PDFs with selectable text: when off, the viewer blocks select/copy/right-click
+              (soft deterrent, not DRM). Scanned image PDFs have no text to copy either way.
             </p>
           </div>
           <div>
