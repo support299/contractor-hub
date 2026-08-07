@@ -48,6 +48,7 @@ import {
   fetchFolders,
   fetchTraining,
   getMediaUrl,
+  mediaContentUrl,
   updateDocument,
   updateFolder,
   updateTraining,
@@ -682,6 +683,16 @@ function DocumentsTab({ canManage }: { canManage: boolean }) {
 
   const openViewer = async (item: DocumentItem) => {
     if (!item.file_path) return;
+    const isPdf =
+      (item.file_type || "").includes("pdf") ||
+      item.file_name.toLowerCase().endsWith(".pdf");
+    // PDFs: same-origin API stream (pdf.js cannot fetch S3 due to CORS).
+    // Images/other: signed URL is fine for <img> / new-tab.
+    if (isPdf) {
+      setViewer(item);
+      setViewerUrl(mediaContentUrl(item.file_path));
+      return;
+    }
     const url = await getMediaUrl(item.file_path);
     if (!url) return toast.error("Unable to open");
     setViewer(item);

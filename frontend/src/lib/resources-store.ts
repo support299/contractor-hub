@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, API_BASE } from "./api";
 
 export interface ResourceFolder {
   id: string;
@@ -118,6 +118,10 @@ export async function getMediaUrl(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export function mediaContentUrl(path: string): string {
+  return `${API_BASE.replace(/\/$/, "")}/uploads/content/?path=${encodeURIComponent(path)}`;
 }
 
 export async function deleteMedia(path: string) {

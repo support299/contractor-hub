@@ -40,3 +40,10 @@ def file_url(relative_path: str, expire_seconds: int = 3600) -> str | None:
         return default_storage.url(relative_path)
     # Local: caller should build absolute URI from MEDIA_URL + path
     return settings.MEDIA_URL + relative_path.lstrip("/")
+
+
+def open_file(relative_path: str, mode: str = "rb"):
+    """Open a stored file for reading (local or S3). Caller must close."""
+    if not relative_path or not default_storage.exists(relative_path):
+        return None
+    return default_storage.open(relative_path, mode)

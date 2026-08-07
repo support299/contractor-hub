@@ -567,30 +567,78 @@ class SignedUrlView(APIView):
         from hub.services.storage import file_exists, file_url, use_s3
 
         path = request.query_params.get("path", "").lstrip("/")
-        if not path or ".." in path:
-            return Response({"detail": "Invalid path"}, status=status.HTTP_400_BAD_REQUEST)
+        err = _authorize_media_path(path, request)
+        if err is not None:
+            return err
         if not file_exists(path):
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        is_hub_doc = path.startswith("hub-documents/") or "/hub-documents/" in path
-        if is_hub_doc:
-            if not HubAccess().has_permission(request, self):
-                return Response(
-                    {"detail": "Authentication required"},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
-            docs = HubDocument.objects.filter(file_path=path)
-            if docs.exists():
-                visible = _filter_by_position(docs, request)
-                if not visible.exists():
-                    return Response(
-                        {"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND
-                    )
 
         url = file_url(path)
         if url and not use_s3() and not url.startswith("http"):
             url = request.build_absolute_uri(url)
         return Response({"url": url})
+
+
+def _authorize_media_path(path: str, request):
+    """Return an error Response, or None if access is allowed."""
+    if not path or ".." in path:
+        return Response({"detail": "Invalid path"}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_hub_doc = path.startswith("hub-documents/") or "/hub-documents/" in path
+    if not is_hub_doc:
+        return None
+
+    if not HubAccess().has_permission(request, None):
+        return Response(
+            {"detail": "Authentication required"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+    docs = HubDocument.objects.filter(file_path=path)
+    if docs.exists():
+        visible = _filter_by_position(docs, request)
+        if not visible.exists():
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    return None
+
+
+class MediaContentView(APIView):
+    """
+    Stream file bytes through the API (same-origin).
+
+    Needed so pdf.js can load hub documents without S3 CORS errors.
+    Form-upload paths remain publicly readable; hub-documents require auth.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        import mimetypes
+        from pathlib import PurePosixPath
+
+        from django.http import FileResponse
+
+        from hub.services.storage import open_file
+
+        path = request.query_params.get("path", "").lstrip("/")
+        err = _authorize_media_path(path, request)
+        if err is not None:
+            return err
+
+        handle = open_file(path)
+        if handle is None:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        filename = PurePosixPath(path).name or "file"
+        response = FileResponse(handle, content_type=content_type)
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        # Allow pdf.js / canvas on the SPA origin when this is ever fetched cross-origin
+        origin = request.headers.get("Origin")
+        if origin:
+            response["Access-Control-Allow-Origin"] = origin
+            response["Access-Control-Allow-Credentials"] = "true"
+            response["Vary"] = "Origin"
+        return response
 
 
 class FileDeleteView(APIView):

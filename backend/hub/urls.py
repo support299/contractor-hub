@@ -30,6 +30,7 @@ urlpatterns = [
     path("auth/me/", views.MeView.as_view(), name="me"),
     path("uploads/", views.FileUploadView.as_view(), name="file-upload"),
     path("uploads/url/", views.SignedUrlView.as_view(), name="file-url"),
+    path("uploads/content/", views.MediaContentView.as_view(), name="file-content"),
     path("uploads/delete/", views.FileDeleteView.as_view(), name="file-delete"),
     path("", include(router.urls)),
 ]

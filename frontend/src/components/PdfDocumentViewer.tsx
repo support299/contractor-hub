@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { getAccessToken } from "@/lib/api";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import "./PdfDocumentViewer.css";
@@ -23,6 +24,10 @@ export function PdfDocumentViewer({ url, title, allowCopy }: Props) {
   const [numPages, setNumPages] = useState(0);
   const [width, setWidth] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const token = getAccessToken();
+  const file = token
+    ? { url, httpHeaders: { Authorization: `Bearer ${token}` } }
+    : url;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -59,18 +64,10 @@ export function PdfDocumentViewer({ url, title, allowCopy }: Props) {
         <div className="h-full flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
           <p>Could not render PDF preview.</p>
           <p className="text-xs">{error}</p>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-emerald-700 underline"
-          >
-            Open file in new tab
-          </a>
         </div>
       ) : (
         <Document
-          file={url}
+          file={file}
           loading={
             <div className="h-full min-h-[200px] flex items-center justify-center text-sm text-muted-foreground">
               Loading PDF…
