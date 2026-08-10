@@ -2,7 +2,6 @@ import re
 import uuid
 from pathlib import Path
 
-from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
@@ -35,14 +34,20 @@ from .serializers import (
     HubTrainingMaterialSerializer,
     HubUserSerializer,
     MeUpdateSerializer,
-    OtpLoginSerializer,
     PasswordLoginSerializer,
+    RequestOtpSerializer,
     SetPasswordSerializer,
+    VerifyOtpSerializer,
 )
 from .services.auth import (
-    find_hub_user,
+    clear_otp,
+    find_hub_user_by_phone,
     find_hub_user_for_login,
+    generate_otp_code,
+    otp_cooldown_active,
+    otp_is_valid,
     set_hub_user_password,
+    store_otp,
     tokens_for_hub_user,
 )
 
@@ -50,24 +55,73 @@ from .services.auth import (
 # ---------- Auth ----------
 
 
-class OtpLoginView(APIView):
-    """Email/phone + role + OTP → JWT (legacy scaffolding; unused until real SMS)."""
+class RequestOtpView(APIView):
+    """Phone → generate OTP, push to GHL Login Otp field (workflow SMS)."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
-        ser = OtpLoginSerializer(data=request.data)
+        ser = RequestOtpSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        otp = ser.validated_data["otp"]
-        if otp != settings.DEFAULT_OTP:
-            return Response({"detail": "Invalid OTP"}, status=status.HTTP_401_UNAUTHORIZED)
-
-        hub_user = find_hub_user(
-            ser.validated_data["identifier"], ser.validated_data["role"]
-        )
+        phone = ser.validated_data["phone"]
+        hub_user = find_hub_user_by_phone(phone)
         if not hub_user:
-            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "No active staff account found for that phone."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if otp_cooldown_active(hub_user):
+            return Response(
+                {
+                    "detail": "Please wait before requesting another code.",
+                    "code": "cooldown",
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
 
+        otp = generate_otp_code()
+        store_otp(hub_user, otp)
+
+        from .services.ghl import GHLApiError, GHLConfigError, push_otp_to_ghl
+
+        try:
+            push_otp_to_ghl(hub_user, otp)
+        except GHLConfigError as exc:
+            clear_otp(hub_user)
+            return Response(
+                {"detail": f"SMS gateway not configured: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except GHLApiError as exc:
+            clear_otp(hub_user)
+            return Response(
+                {"detail": f"Failed to send OTP: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"detail": "OTP sent"})
+
+
+class VerifyOtpView(APIView):
+    """Phone + OTP → JWT (does not require password_configured)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        ser = VerifyOtpSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        hub_user = find_hub_user_by_phone(ser.validated_data["phone"])
+        if not hub_user:
+            return Response(
+                {"detail": "No active staff account found for that phone."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not otp_is_valid(hub_user, ser.validated_data["otp"]):
+            return Response(
+                {"detail": "Invalid or expired OTP"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        clear_otp(hub_user)
         return Response(tokens_for_hub_user(hub_user))
 
 

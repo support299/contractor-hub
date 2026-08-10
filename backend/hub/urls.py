@@ -23,7 +23,8 @@ router.register(r"documents", views.HubDocumentViewSet, basename="hub-documents"
 router.register(r"alerts", views.HubAlertViewSet, basename="hub-alerts")
 
 urlpatterns = [
-    path("auth/otp-login/", views.OtpLoginView.as_view(), name="otp-login"),
+    path("auth/request-otp/", views.RequestOtpView.as_view(), name="request-otp"),
+    path("auth/verify-otp/", views.VerifyOtpView.as_view(), name="verify-otp"),
     path("auth/login/", views.PasswordLoginView.as_view(), name="password-login"),
     path("auth/set-password/", views.SetPasswordView.as_view(), name="set-password"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),

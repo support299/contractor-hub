@@ -155,10 +155,18 @@ export async function setPassword(email: string, password: string, passwordConfi
   return data;
 }
 
-export async function loginOtp(identifier: string, role: string, otp: string) {
+export async function requestOtp(phone: string) {
+  return api<{ detail: string }>("/auth/request-otp/", {
+    method: "POST",
+    body: { phone },
+    auth: false,
+  });
+}
+
+export async function verifyOtp(phone: string, otp: string) {
   const data = await api<{ access: string; refresh: string; user: AuthUser }>(
-    "/auth/otp-login/",
-    { method: "POST", body: { identifier, role, otp }, auth: false },
+    "/auth/verify-otp/",
+    { method: "POST", body: { phone, otp }, auth: false },
   );
   setAuth(data.access, data.refresh, data.user);
   return data;

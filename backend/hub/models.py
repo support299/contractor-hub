@@ -64,6 +64,9 @@ class HubUser(TimeStampedModel):
     )
     # False until staff completes Set password (or admin seeds a password)
     password_configured = models.BooleanField(default=False)
+    # Phone OTP (cleared after successful verify)
+    otp_code = models.CharField(max_length=6, blank=True, null=True, default=None)
+    otp_created_at = models.DateTimeField(blank=True, null=True, default=None)
 
     class Meta:
         ordering = ["created_at"]

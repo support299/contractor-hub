@@ -459,6 +459,9 @@ export default function SettingsPage() {
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="+1 555 555 5555"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Required for Sign in with phone. Must match the contact phone in GHL.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>

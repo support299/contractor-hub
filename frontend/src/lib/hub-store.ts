@@ -163,5 +163,3 @@ export async function getSectors(): Promise<string[]> {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }
 }
-
-export const DEFAULT_OTP = "201095";

@@ -1,11 +1,77 @@
 """Auth helpers: ensure Django User exists for a HubUser and issue JWTs."""
 
+import re
+import secrets
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from hub.models import HubUser
+
+
+def normalize_phone(phone: str) -> str:
+    """Keep digits (and leading +); collapse formatting."""
+    raw = (phone or "").strip()
+    if not raw:
+        return ""
+    has_plus = raw.startswith("+")
+    digits = re.sub(r"\D", "", raw)
+    if not digits:
+        return ""
+    return f"+{digits}" if has_plus else digits
+
+
+def phone_match_key(phone: str) -> str:
+    """Last 10 digits for loose NA matching."""
+    digits = re.sub(r"\D", "", phone or "")
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def find_hub_user_by_phone(phone: str) -> HubUser | None:
+    key = phone_match_key(phone)
+    if not key:
+        return None
+    for u in HubUser.objects.filter(status=HubUser.Status.ACTIVE).exclude(phone=""):
+        if phone_match_key(u.phone) == key:
+            return u
+    return None
+
+
+def generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def otp_is_valid(hub_user: HubUser, otp: str) -> bool:
+    if not hub_user.otp_code or not hub_user.otp_created_at:
+        return False
+    if hub_user.otp_code != (otp or "").strip():
+        return False
+    minutes = int(getattr(settings, "OTP_EXPIRY_MINUTES", 5))
+    return timezone.now() - hub_user.otp_created_at < timedelta(minutes=minutes)
+
+
+def otp_cooldown_active(hub_user: HubUser) -> bool:
+    if not hub_user.otp_created_at:
+        return False
+    cooldown = int(getattr(settings, "OTP_REQUEST_COOLDOWN_SECONDS", 60))
+    return (timezone.now() - hub_user.otp_created_at).total_seconds() < cooldown
+
+
+def store_otp(hub_user: HubUser, otp: str) -> None:
+    hub_user.otp_code = otp
+    hub_user.otp_created_at = timezone.now()
+    hub_user.save(update_fields=["otp_code", "otp_created_at", "updated_at"])
+
+
+def clear_otp(hub_user: HubUser) -> None:
+    hub_user.otp_code = None
+    hub_user.otp_created_at = None
+    hub_user.save(update_fields=["otp_code", "otp_created_at", "updated_at"])
 
 
 def ensure_auth_user(hub_user: HubUser) -> User:

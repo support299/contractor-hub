@@ -386,10 +386,13 @@ class HubAlertSerializer(serializers.ModelSerializer):
         }
 
 
-class OtpLoginSerializer(serializers.Serializer):
-    identifier = serializers.CharField()
-    role = serializers.ChoiceField(choices=HubUser.Role.choices)
-    otp = serializers.CharField()
+class RequestOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=64)
+
+
+class VerifyOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=64)
+    otp = serializers.CharField(max_length=6, min_length=6)
 
 
 class PasswordLoginSerializer(serializers.Serializer):

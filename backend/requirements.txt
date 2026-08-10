@@ -10,3 +10,4 @@ gunicorn>=22.0
 psycopg[binary]>=3.2
 django-storages[s3]>=1.14
 boto3>=1.34
+requests>=2.31

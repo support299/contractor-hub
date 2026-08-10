@@ -184,8 +184,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
 }
 
-# Hub auth: shared OTP used by the original Lovable client scaffolding
-DEFAULT_OTP = os.getenv("DEFAULT_OTP", "201095")
-
 # Open hub without JWT (legacy). Production default: require authentication.
 HUB_OPEN_ACCESS = os.getenv("HUB_OPEN_ACCESS", "False").lower() in ("1", "true", "yes")
+
+# GoHighLevel (Private Integration) — phone OTP SMS via workflow on Login Otp field
+GHL_PRIVATE_TOKEN = os.getenv("GHL_PRIVATE_TOKEN", "")
+GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID", "")
+GHL_BASE_URL = os.getenv("GHL_BASE_URL", "https://services.leadconnectorhq.com")
+GHL_API_VERSION = os.getenv("GHL_API_VERSION", "2021-07-28")
+OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "5"))
+OTP_REQUEST_COOLDOWN_SECONDS = int(os.getenv("OTP_REQUEST_COOLDOWN_SECONDS", "60"))
