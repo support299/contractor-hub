@@ -272,6 +272,25 @@ export function useForms() {
   return forms;
 }
 
+/** Form slug for payroll line items — Technician is single-select in UI. */
+export const PAYROLL_RECORDS_SLUG = "new-payroll-records";
+
+export function isPayrollRecordsSlug(slug: string | null | undefined): boolean {
+  return slug === PAYROLL_RECORDS_SLUG;
+}
+
+/** Normalize users-field answers (string or string[]) to a name list. */
+export function normalizeUserNames(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value.map(String).map((s) => s.trim()).filter(Boolean);
+  const s = String(value).trim();
+  return s ? [s] : [];
+}
+
+export function singleUserName(value: unknown): string {
+  return normalizeUserNames(value)[0] ?? "";
+}
+
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   single_line: "Single line text",
   number: "Number",

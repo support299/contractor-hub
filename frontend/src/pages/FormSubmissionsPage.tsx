@@ -28,6 +28,9 @@ import {
   fetchFormById,
   fetchSubmissions,
   getFileSignedUrl,
+  isPayrollRecordsSlug,
+  normalizeUserNames,
+  singleUserName,
   updateSubmission,
   uploadFormFile,
   type FormField,
@@ -414,6 +417,7 @@ function EditSubmissionDialog({
               value={answers[f.id]}
               onChange={(v) => setAnswer(f.id, v)}
               users={users}
+              singleUserSelect={isPayrollRecordsSlug(form.slug)}
             />
           ))}
         </div>
@@ -438,9 +442,10 @@ interface EditFieldProps {
   value: unknown;
   onChange: (v: unknown) => void;
   users: HubUser[];
+  singleUserSelect?: boolean;
 }
 
-function EditField({ field, value, onChange, users }: EditFieldProps) {
+function EditField({ field, value, onChange, users, singleUserSelect }: EditFieldProps) {
   const label = (
     <Label className="text-sm">
       {field.label || "(untitled)"}
@@ -577,12 +582,45 @@ function EditField({ field, value, onChange, users }: EditFieldProps) {
         </div>
       );
     case "users": {
-      const selected = Array.isArray(value) ? (value as string[]) : [];
+      const active = users.filter((u) => u.status === "active");
+      if (singleUserSelect) {
+        const names = normalizeUserNames(value);
+        const current = singleUserName(value);
+        return (
+          <div className="space-y-1.5">
+            {label}
+            <Select
+              value={current || undefined}
+              onValueChange={(name) => onChange(name ? [name] : [])}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select technician…" />
+              </SelectTrigger>
+              <SelectContent>
+                {active.map((u) => (
+                  <SelectItem key={u.id} value={u.name}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+                {current && !active.some((u) => u.name === current) && (
+                  <SelectItem value={current}>{current}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {names.length > 1 && (
+              <p className="text-xs text-amber-700">
+                This row had {names.length} technicians. Choose one to keep.
+                Others: {names.slice(1).join(", ")}
+              </p>
+            )}
+          </div>
+        );
+      }
+      const selected = normalizeUserNames(value);
       const toggle = (name: string) => {
         if (selected.includes(name)) onChange(selected.filter((n) => n !== name));
         else onChange([...selected, name]);
       };
-      const active = users.filter((u) => u.status === "active");
       return (
         <div className="space-y-1.5">
           {label}

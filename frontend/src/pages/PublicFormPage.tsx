@@ -32,6 +32,8 @@ import {
   evaluateCondition,
   fetchFormBySlug,
   fetchOpenPayrolls,
+  isPayrollRecordsSlug,
+  singleUserName,
   submitFormAnswers,
   uploadFormFile,
   type FormField,
@@ -132,9 +134,19 @@ export default function PublicFormPage() {
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="max-w-md text-center space-y-3">
+        <div className="max-w-md text-center space-y-4">
           <h1 className="text-2xl font-semibold">Thank you!</h1>
           <p className="text-muted-foreground">Your response has been recorded.</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setAnswers({});
+              setSubmitted(false);
+            }}
+          >
+            Fill out another response
+          </Button>
         </div>
       </div>
     );
@@ -151,6 +163,7 @@ export default function PublicFormPage() {
               value={answers[f.id]}
               onChange={(v) => setAnswer(f.id, v)}
               users={users}
+              formSlug={slug}
             />
           ))}
 
@@ -176,9 +189,11 @@ export interface FieldRendererProps {
   value: unknown;
   onChange: (v: unknown) => void;
   users: HubUser[];
+  /** When set to payroll records slug, Users fields become single-select. */
+  formSlug?: string;
 }
 
-export function FieldRenderer({ field, value, onChange, users }: FieldRendererProps) {
+export function FieldRenderer({ field, value, onChange, users, formSlug }: FieldRendererProps) {
   if (field.type === "image") {
     if (!field.imageUrl) return null;
     return (
@@ -365,6 +380,19 @@ export function FieldRenderer({ field, value, onChange, users }: FieldRendererPr
       );
     case "users": {
       const activeUsers = users.filter((u) => u.status === "active");
+      if (isPayrollRecordsSlug(formSlug)) {
+        const current = singleUserName(value);
+        return (
+          <div className="space-y-1.5">
+            {label}
+            <UsersSingleSelect
+              users={activeUsers}
+              value={current}
+              onChange={(name) => onChange(name ? [name] : [])}
+            />
+          </div>
+        );
+      }
       return (
         <div className="space-y-1.5">
           {label}
@@ -431,6 +459,42 @@ function FileUploadField({ field, value, onChange }: FileUploadFieldProps) {
         </p>
       )}
     </div>
+  );
+}
+
+interface UsersSingleSelectProps {
+  users: HubUser[];
+  value: string;
+  onChange: (name: string) => void;
+  placeholder?: string;
+}
+
+function UsersSingleSelect({
+  users,
+  value,
+  onChange,
+  placeholder = "Select technician…",
+}: UsersSingleSelectProps) {
+  if (users.length === 0 && !value) {
+    return <p className="text-sm text-muted-foreground">No users available.</p>;
+  }
+
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {users.map((u) => (
+          <SelectItem key={u.id} value={u.name}>
+            {u.name}
+          </SelectItem>
+        ))}
+        {value && !users.some((u) => u.name === value) && (
+          <SelectItem value={value}>{value}</SelectItem>
+        )}
+      </SelectContent>
+    </Select>
   );
 }
 

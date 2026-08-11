@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import {
   fetchForms,
   fetchSubmissions,
+  normalizeUserNames,
+  PAYROLL_RECORDS_SLUG,
   submitFormAnswers,
   updateSubmission,
   type FormField,
@@ -42,7 +44,6 @@ interface StaffTotals {
   tr: number;
 }
 
-const PAYROLL_RECORDS_SLUG = "new-payroll-records";
 const PAYROLL_PERIODS_SLUG = "new-payroll-periods";
 
 function normalizeName(s: string): string {
@@ -252,8 +253,10 @@ export function PayrollImportDialog({ users, onImported }: Props) {
       const existingByTech = new Map<string, string>(); // technician name -> submission id
       for (const rec of existingRecords) {
         if (!fPeriod || rec.answers[fPeriod] !== periodSubmissionId) continue;
-        const tech = fTech ? String(rec.answers[fTech] ?? "") : "";
-        if (tech) existingByTech.set(tech.toLowerCase(), rec.id);
+        const names = fTech ? normalizeUserNames(rec.answers[fTech]) : [];
+        for (const tech of names) {
+          existingByTech.set(tech.toLowerCase(), rec.id);
+        }
       }
 
       let created = 0;
@@ -261,7 +264,8 @@ export function PayrollImportDialog({ users, onImported }: Props) {
       for (const t of matched) {
         const answers: Record<string, unknown> = {};
         if (fPeriod) answers[fPeriod] = periodSubmissionId;
-        if (fTech) answers[fTech] = t.matchedUser!.name;
+        // Always store as single-element array (Users field shape)
+        if (fTech) answers[fTech] = [t.matchedUser!.name];
         if (fReg) answers[fReg] = round2(t.regular);
         if (fDrive) answers[fDrive] = round2(t.drive);
         if (fFc) answers[fFc] = round2(t.fc);

@@ -160,8 +160,7 @@ export default function LoginPage() {
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Use the phone on your staff profile. A 6-digit code will be
-                      texted via GHL.
+                      Use the phone on your staff profile.
                     </p>
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>

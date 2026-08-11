@@ -105,6 +105,7 @@ export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title 
                   value={answers[f.id]}
                   onChange={(v) => setAnswer(f.id, v)}
                   users={users}
+                  formSlug={slug}
                 />
               ))}
             </form>

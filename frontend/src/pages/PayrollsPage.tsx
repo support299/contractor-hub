@@ -31,13 +31,14 @@ import {
   deleteSubmission,
   fetchForms,
   fetchSubmissions,
+  PAYROLL_RECORDS_SLUG,
   type FormField,
   type FormSubmission,
   type HubForm,
 } from "@/lib/forms-store";
 import { PayrollImportDialog } from "@/components/admin/PayrollImportDialog";
 
-const PAYROLL_SLUG = "new-payroll-records";
+const PAYROLL_SLUG = PAYROLL_RECORDS_SLUG;
 const PAYROLL_PERIODS_SLUG = "new-payroll-periods";
 
 function findFieldId(fields: FormField[], label: string): string | null {

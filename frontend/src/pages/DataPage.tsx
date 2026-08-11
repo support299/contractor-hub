@@ -44,8 +44,11 @@ import {
   fetchSubmissions,
   FIELD_TYPE_LABELS,
   getFileSignedUrl,
+  isPayrollRecordsSlug,
   isStaticField,
   newField,
+  normalizeUserNames,
+  singleUserName,
   updateForm,
   updateSubmission,
   uploadFormFile,
@@ -358,6 +361,7 @@ function FormDataTable({ form }: FormDataTableProps) {
   const [saveListOpen, setSaveListOpen] = useState(false);
   const [newListName, setNewListName] = useState("");
   const isLeaveForm = form.slug === LEAVE_FORM_SLUG;
+  const isPayrollForm = isPayrollRecordsSlug(form.slug);
   const [approvals, setApprovals] = useState<Record<string, ApprovalStatus>>({});
 
   // Reload submissions when form changes
@@ -752,7 +756,11 @@ function FormDataTable({ form }: FormDataTableProps) {
                         {field.label || "(untitled)"}
                       </div>
                       <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-normal">
-                        {source === "extra" ? "Table column" : FIELD_TYPE_LABELS[field.type]}
+                        {source === "extra"
+                          ? "Table column"
+                          : isPayrollForm && field.type === "users"
+                            ? "Users (single-select)"
+                            : FIELD_TYPE_LABELS[field.type]}
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
@@ -821,6 +829,7 @@ function FormDataTable({ form }: FormDataTableProps) {
                       value={s.answers[field.id]}
                       users={users}
                       onChange={(v) => handleCellChange(s, field.id, v)}
+                      singleUserSelect={isPayrollForm}
                     />
                   </td>
                 ))}
@@ -1248,9 +1257,11 @@ interface CellProps {
   value: unknown;
   users: HubUser[];
   onChange: (v: unknown) => void;
+  /** Payroll records: one technician per row; compact dropdown instead of all-staff chips. */
+  singleUserSelect?: boolean;
 }
 
-function Cell({ field, value, users, onChange }: CellProps) {
+function Cell({ field, value, users, onChange, singleUserSelect }: CellProps) {
   switch (field.type) {
     case "single_line":
       return (
@@ -1342,12 +1353,44 @@ function Cell({ field, value, users, onChange }: CellProps) {
       );
     }
     case "users": {
-      const selected = Array.isArray(value) ? (value as string[]) : [];
+      const active = users.filter((u) => u.status === "active");
+      if (singleUserSelect) {
+        const names = normalizeUserNames(value);
+        const current = singleUserName(value);
+        return (
+          <div className="min-w-[160px] max-w-xs space-y-1">
+            <Select
+              value={current || undefined}
+              onValueChange={(name) => onChange(name ? [name] : [])}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="Select technician…" />
+              </SelectTrigger>
+              <SelectContent>
+                {active.map((u) => (
+                  <SelectItem key={u.id} value={u.name}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+                {current && !active.some((u) => u.name === current) && (
+                  <SelectItem value={current}>{current}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {names.length > 1 && (
+              <p className="text-[10px] text-amber-700 leading-snug">
+                Had {names.length} names; pick one to keep. Others:{" "}
+                {names.slice(1).join(", ")}
+              </p>
+            )}
+          </div>
+        );
+      }
+      const selected = normalizeUserNames(value);
       const toggle = (name: string) => {
         if (selected.includes(name)) onChange(selected.filter((n) => n !== name));
         else onChange([...selected, name]);
       };
-      const active = users.filter((u) => u.status === "active");
       return (
         <div className="flex flex-wrap gap-1.5 max-w-xs">
           {active.map((u) => (
