@@ -306,6 +306,25 @@ class HubUserViewSet(viewsets.ModelViewSet):
             return [HubAccess()]
         return [IsAdminRole()]
 
+    def list(self, request, *args, **kwargs):
+        from datetime import date
+
+        from .services.vacation import ensure_vacation_balance_current
+
+        today = date.today()
+        for user in list(self.get_queryset()):
+            ensure_vacation_balance_current(user, today)
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        from datetime import date
+
+        from .services.vacation import ensure_vacation_balance_current
+
+        user = self.get_object()
+        ensure_vacation_balance_current(user, date.today())
+        return super().retrieve(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"], url_path="sectors")
     def sectors(self, request):
         sectors = set()
@@ -420,7 +439,9 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
 
 
 class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
-    queryset = HubLeaveApproval.objects.select_related("submission").all()
+    queryset = HubLeaveApproval.objects.select_related(
+        "submission", "submission__form"
+    ).all()
     serializer_class = HubLeaveApprovalSerializer
     permission_classes = [HubAccess]
     pagination_class = None
@@ -429,9 +450,29 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         status_val = serializer.validated_data.get("status")
         if status_val and status_val != HubLeaveApproval.Status.PENDING:
-            serializer.save(decided_at=timezone.now())
+            approval = serializer.save(decided_at=timezone.now())
         else:
-            serializer.save()
+            approval = serializer.save()
+        if approval.status == HubLeaveApproval.Status.APPROVED:
+            from .services.leave_approve import on_leave_approved
+
+            on_leave_approved(approval)
+
+    @action(detail=True, methods=["post"], url_path="retry-jobber-sync")
+    def retry_jobber_sync(self, request, submission_id=None):
+        approval = self.get_object()
+        if approval.status != HubLeaveApproval.Status.APPROVED:
+            return Response(
+                {"detail": "Only approved leave can sync to Jobber."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if approval.jobber_task_id:
+            return Response(self.get_serializer(approval).data)
+        from .services.leave_approve import sync_jobber_task
+
+        sync_jobber_task(approval)
+        approval.refresh_from_db()
+        return Response(self.get_serializer(approval).data)
 
     @action(detail=False, methods=["post"], url_path="ensure")
     def ensure(self, request):

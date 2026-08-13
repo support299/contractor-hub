@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -47,6 +48,11 @@ class HubUser(TimeStampedModel):
     position = models.CharField(max_length=128, blank=True, default="")
     jobber_id = models.CharField(max_length=128, blank=True, default="")
     ghl_id = models.CharField(max_length=128, blank=True, default="")
+    hire_date = models.DateField(null=True, blank=True)
+    available_vacation_days = models.DecimalField(
+        max_digits=6, decimal_places=1, default=Decimal("0")
+    )
+    vacation_balance_reset_on = models.DateField(null=True, blank=True)
     regular_rate = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
@@ -134,6 +140,12 @@ class HubLeaveApproval(TimeStampedModel):
         max_length=32, choices=Status.choices, default=Status.PENDING
     )
     decided_at = models.DateTimeField(null=True, blank=True)
+    jobber_task_id = models.CharField(max_length=255, blank=True, default="")
+    jobber_task_synced_at = models.DateTimeField(null=True, blank=True)
+    jobber_sync_error = models.TextField(blank=True, default="")
+    vacation_days_deducted = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True
+    )
 
     class Meta:
         ordering = ["-created_at"]

@@ -194,3 +194,8 @@ GHL_BASE_URL = os.getenv("GHL_BASE_URL", "https://services.leadconnectorhq.com")
 GHL_API_VERSION = os.getenv("GHL_API_VERSION", "2021-07-28")
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "5"))
 OTP_REQUEST_COOLDOWN_SECONDS = int(os.getenv("OTP_REQUEST_COOLDOWN_SECONDS", "60"))
+
+# Jobber tasks are created by peter-service-creator-backend (do not store Jobber OAuth here).
+SERVICE_CREATOR_BASE_URL = os.getenv(
+    "SERVICE_CREATOR_BASE_URL", "https://site.cleanonthego.com"
+).rstrip("/")

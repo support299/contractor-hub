@@ -61,7 +61,7 @@ import {
   type UploadedFile,
 } from "@/lib/forms-store";
 import { fetchUsers, type HubUser } from "@/lib/hub-store";
-import { fetchLeaveApprovals, updateLeaveApproval, type ApprovalStatus } from "@/lib/leave-store";
+import { fetchLeaveApprovals, retryJobberSync, updateLeaveApproval, type ApprovalStatus, type LeaveApproval } from "@/lib/leave-store";
 
 const LEAVE_FORM_SLUG = "request-time-off";
 
@@ -362,7 +362,7 @@ function FormDataTable({ form }: FormDataTableProps) {
   const [newListName, setNewListName] = useState("");
   const isLeaveForm = form.slug === LEAVE_FORM_SLUG;
   const isPayrollForm = isPayrollRecordsSlug(form.slug);
-  const [approvals, setApprovals] = useState<Record<string, ApprovalStatus>>({});
+  const [approvals, setApprovals] = useState<Record<string, LeaveApproval>>({});
 
   // Reload submissions when form changes
   useEffect(() => {
@@ -392,8 +392,8 @@ function FormDataTable({ form }: FormDataTableProps) {
       try {
         const list = await fetchLeaveApprovals();
         if (!active) return;
-        const map: Record<string, ApprovalStatus> = {};
-        for (const r of list) map[r.submission_id] = r.status;
+        const map: Record<string, LeaveApproval> = {};
+        for (const r of list) map[r.submission_id] = r;
         setApprovals(map);
       } catch {
         /* ignore */
@@ -408,10 +408,17 @@ function FormDataTable({ form }: FormDataTableProps) {
   }, [isLeaveForm, form.id]);
 
   const setApprovalStatus = async (submissionId: string, status: ApprovalStatus) => {
-    setApprovals((m) => ({ ...m, [submissionId]: status }));
+    setApprovals((m) => ({
+      ...m,
+      [submissionId]: { ...(m[submissionId] ?? { submission_id: submissionId, decided_at: null }), status },
+    }));
     try {
-      await updateLeaveApproval(submissionId, status);
+      const updated = await updateLeaveApproval(submissionId, status);
+      setApprovals((m) => ({ ...m, [submissionId]: updated }));
       toast.success(`Marked ${status}`);
+      if (status === "approved" && updated.jobber_sync_error) {
+        toast.error(`Jobber sync failed: ${updated.jobber_sync_error}`);
+      }
     } catch {
       toast.error("Could not update approval status");
     }
@@ -836,7 +843,7 @@ function FormDataTable({ form }: FormDataTableProps) {
                 {isLeaveForm && (
                   <td className="px-2 py-1.5">
                     <Select
-                      value={approvals[s.id] ?? "pending"}
+                      value={approvals[s.id]?.status ?? "pending"}
                       onValueChange={(v) => setApprovalStatus(s.id, v as ApprovalStatus)}
                     >
                       <SelectTrigger className="h-8 text-xs">
@@ -848,6 +855,33 @@ function FormDataTable({ form }: FormDataTableProps) {
                         <SelectItem value="rejected">Rejected</SelectItem>
                       </SelectContent>
                     </Select>
+                    {approvals[s.id]?.vacation_summary?.leave_type === "Vacation" && (
+                      <div className="mt-1 text-[10px] leading-snug text-amber-900">
+                        Avail {approvals[s.id].vacation_summary?.available_vacation_days ?? "—"} ·{" "}
+                        {approvals[s.id].vacation_summary?.weekday_count} weekdays
+                        {approvals[s.id].vacation_summary?.warning
+                          ? ` · ${approvals[s.id].vacation_summary?.warning}`
+                          : ""}
+                      </div>
+                    )}
+                    {approvals[s.id]?.jobber_sync_error ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-[10px] text-rose-700 underline"
+                        onClick={async () => {
+                          try {
+                            const updated = await retryJobberSync(s.id);
+                            setApprovals((m) => ({ ...m, [s.id]: updated }));
+                            if (updated.jobber_task_id) toast.success("Jobber task created");
+                            else toast.error(updated.jobber_sync_error || "Jobber sync failed");
+                          } catch {
+                            toast.error("Could not retry Jobber sync");
+                          }
+                        }}
+                      >
+                        Retry Jobber: {approvals[s.id].jobber_sync_error}
+                      </button>
+                    ) : null}
                   </td>
                 )}
                 <td className="px-3 py-2">

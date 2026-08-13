@@ -32,8 +32,10 @@ import {
   fetchLeaveApprovals,
   ensureLeaveApproval,
   updateLeaveApproval,
+  retryJobberSync,
   type ApprovalStatus,
   type LeaveApproval,
+  type VacationSummary,
 } from "@/lib/leave-store";
 import {
   Select,
@@ -107,6 +109,19 @@ function colorFor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
+}
+
+function VacationBanner({ summary }: { summary?: VacationSummary | null }) {
+  if (!summary || summary.leave_type !== "Vacation") return null;
+  return (
+    <div className="text-[11px] space-y-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-950">
+      <div>
+        Available: {summary.available_vacation_days ?? "—"} · This request:{" "}
+        {summary.weekday_count} weekday{summary.weekday_count === 1 ? "" : "s"}
+      </div>
+      {summary.warning ? <div className="font-medium">{summary.warning}</div> : null}
+    </div>
+  );
 }
 
 function detectFields(form: HubForm) {
@@ -293,8 +308,22 @@ export default function CalendarPage() {
       const updated = await updateLeaveApproval(id, status);
       setApprovals((p) => ({ ...p, [id]: updated }));
       toast.success(`Request ${status}`);
+      if (status === "approved" && updated.jobber_sync_error) {
+        toast.error(`Jobber sync failed: ${updated.jobber_sync_error}`);
+      }
     } catch {
       toast.error("Could not update status");
+    }
+  }
+
+  async function retrySync(id: string) {
+    try {
+      const updated = await retryJobberSync(id);
+      setApprovals((p) => ({ ...p, [id]: updated }));
+      if (updated.jobber_task_id) toast.success("Jobber task created");
+      else toast.error(updated.jobber_sync_error || "Jobber sync failed");
+    } catch {
+      toast.error("Could not retry Jobber sync");
     }
   }
 
@@ -570,6 +599,17 @@ export default function CalendarPage() {
                   {r.reason}
                 </div>
               )}
+              <VacationBanner summary={approvals[r.submission.id]?.vacation_summary} />
+              {approvals[r.submission.id]?.jobber_sync_error ? (
+                <div className="text-[11px] text-rose-700">
+                  Jobber: {approvals[r.submission.id].jobber_sync_error}
+                </div>
+              ) : null}
+              {approvals[r.submission.id]?.jobber_task_id ? (
+                <div className="text-[11px] text-muted-foreground">
+                  Jobber task saved
+                </div>
+              ) : null}
               <div className="text-[11px] text-muted-foreground">
                 Submitted {new Date(r.submission.createdAt).toLocaleString()}
               </div>
@@ -581,6 +621,16 @@ export default function CalendarPage() {
                     onClick={() => setStatus(r.submission.id, "approved")}
                   >
                     <Check className="h-3.5 w-3.5 mr-1" /> Approve
+                  </Button>
+                )}
+                {r.status === "approved" && !approvals[r.submission.id]?.jobber_task_id && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => retrySync(r.submission.id)}
+                  >
+                    Retry Jobber
                   </Button>
                 )}
                 {r.status !== "rejected" && (

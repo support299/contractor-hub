@@ -54,6 +54,8 @@ type FormState = {
   fcRate: string;
   trRate: string;
   suppliesDeduction: string;
+  hireDate: string;
+  availableVacationDays: string;
 };
 
 const emptyForm: FormState = {
@@ -74,6 +76,8 @@ const emptyForm: FormState = {
   fcRate: "",
   trRate: "",
   suppliesDeduction: "",
+  hireDate: "",
+  availableVacationDays: "",
 };
 
 export default function SettingsPage() {
@@ -133,6 +137,9 @@ export default function SettingsPage() {
       fcRate: u.fcRate != null ? String(u.fcRate) : "",
       trRate: u.trRate != null ? String(u.trRate) : "",
       suppliesDeduction: u.suppliesDeduction != null ? String(u.suppliesDeduction) : "",
+      hireDate: u.hireDate ?? "",
+      availableVacationDays:
+        u.availableVacationDays != null ? String(u.availableVacationDays) : "",
     });
     setOpen(true);
   };
@@ -172,6 +179,10 @@ export default function SettingsPage() {
       fcRate: parseNum(form.fcRate),
       trRate: parseNum(form.trRate),
       suppliesDeduction: parseNum(form.suppliesDeduction),
+      hireDate: form.hireDate.trim() || null,
+      availableVacationDays: form.availableVacationDays.trim()
+        ? Number(form.availableVacationDays)
+        : 0,
     };
     const dup = users.find(
       (u) =>
@@ -262,6 +273,8 @@ export default function SettingsPage() {
                   <th className="px-4 py-3 font-medium">Login</th>
                   <th className="px-4 py-3 font-medium">Sector</th>
                   <th className="px-4 py-3 font-medium">Work days</th>
+                  <th className="px-4 py-3 font-medium">Hire date</th>
+                  <th className="px-4 py-3 font-medium">Vacation days</th>
                   <th className="px-4 py-3 font-medium">Position</th>
                   <th className="px-4 py-3 w-12"></th>
                 </tr>
@@ -335,6 +348,12 @@ export default function SettingsPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {u.workDays != null ? u.workDays : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {u.hireDate || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {u.availableVacationDays != null ? u.availableVacationDays : "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{u.position || "—"}</td>
                     <td className="px-4 py-3">
@@ -566,6 +585,33 @@ export default function SettingsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hireDate">Hire date</Label>
+                <Input
+                  id="hireDate"
+                  type="date"
+                  value={form.hireDate}
+                  onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Vacation days start on the 1-year anniversary. Yearly allotment resets to 10 (no carry-over).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="availableVacationDays">Available vacation days</Label>
+                <Input
+                  id="availableVacationDays"
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={form.availableVacationDays}
+                  onChange={(e) => setForm({ ...form, availableVacationDays: e.target.value })}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Admin override for corrections. New staff stay at 0 until eligible.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="jobberId">Jobber ID</Label>

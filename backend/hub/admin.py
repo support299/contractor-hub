@@ -14,7 +14,7 @@ from .models import (
 
 @admin.register(HubUser)
 class HubUserAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "role", "status", "position", "created_at")
+    list_display = ("name", "email", "role", "status", "position", "hire_date", "available_vacation_days", "created_at")
     list_filter = ("role", "status")
     search_fields = ("name", "email", "phone", "jobber_id", "ghl_id")
     raw_id_fields = ("auth_user",)
@@ -37,7 +37,7 @@ class HubFormSubmissionAdmin(admin.ModelAdmin):
 
 @admin.register(HubLeaveApproval)
 class HubLeaveApprovalAdmin(admin.ModelAdmin):
-    list_display = ("submission", "status", "decided_at", "created_at")
+    list_display = ("submission", "status", "decided_at", "jobber_task_id", "created_at")
     list_filter = ("status",)
 
 

@@ -36,6 +36,8 @@ export interface HubUser {
   trRate?: number;
   suppliesDeduction?: number;
   passwordConfigured?: boolean;
+  hireDate?: string | null;
+  availableVacationDays?: number;
 }
 
 export { getSession };
@@ -73,6 +75,8 @@ function normalize(u: Record<string, unknown>): HubUser {
     trRate: num(u.trRate),
     suppliesDeduction: num(u.suppliesDeduction),
     passwordConfigured: Boolean(u.passwordConfigured),
+    hireDate: (u.hireDate as string) || undefined,
+    availableVacationDays: num(u.availableVacationDays),
   };
 }
 

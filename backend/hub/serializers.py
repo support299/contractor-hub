@@ -65,6 +65,15 @@ class HubUserSerializer(serializers.ModelSerializer):
     passwordConfigured = serializers.BooleanField(
         source="password_configured", read_only=True
     )
+    hireDate = serializers.DateField(
+        source="hire_date", required=False, allow_null=True
+    )
+    availableVacationDays = serializers.DecimalField(
+        source="available_vacation_days",
+        max_digits=6,
+        decimal_places=1,
+        required=False,
+    )
 
     # Pay / integration fields — admin only in API responses
     _ADMIN_ONLY_FIELDS = (
@@ -98,6 +107,8 @@ class HubUserSerializer(serializers.ModelSerializer):
             "trRate",
             "suppliesDeduction",
             "passwordConfigured",
+            "hireDate",
+            "availableVacationDays",
             "created_at",
             "updated_at",
         ]
@@ -179,6 +190,7 @@ class HubFormSubmissionSerializer(serializers.ModelSerializer):
 
 class HubLeaveApprovalSerializer(serializers.ModelSerializer):
     submission_id = serializers.UUIDField(read_only=True)
+    vacation_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = HubLeaveApproval
@@ -186,10 +198,33 @@ class HubLeaveApprovalSerializer(serializers.ModelSerializer):
             "submission_id",
             "status",
             "decided_at",
+            "jobber_task_id",
+            "jobber_task_synced_at",
+            "jobber_sync_error",
+            "vacation_days_deducted",
+            "vacation_summary",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["submission_id", "created_at", "updated_at"]
+        read_only_fields = [
+            "submission_id",
+            "jobber_task_id",
+            "jobber_task_synced_at",
+            "jobber_sync_error",
+            "vacation_days_deducted",
+            "vacation_summary",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_vacation_summary(self, obj):
+        from .services.leave_request import parse_leave_submission, vacation_summary_for_parsed
+
+        try:
+            parsed = parse_leave_submission(obj.submission)
+            return vacation_summary_for_parsed(parsed)
+        except Exception:
+            return None
 
 
 class HubTrainingMaterialSerializer(serializers.ModelSerializer):
