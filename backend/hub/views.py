@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,6 +19,7 @@ from .models import (
     HubForm,
     HubFormSubmission,
     HubLeaveApproval,
+    HubNotification,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -30,6 +32,7 @@ from .serializers import (
     HubFormSerializer,
     HubFormSubmissionSerializer,
     HubLeaveApprovalSerializer,
+    HubNotificationSerializer,
     HubResourceFolderSerializer,
     HubTrainingMaterialSerializer,
     HubUserSerializer,
@@ -388,6 +391,9 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
         # Auto-create leave approval for time-off form
         if submission.form.slug == "request-time-off":
             HubLeaveApproval.objects.get_or_create(submission=submission)
+            from .services.leave_notify import notify_leave_submitted
+
+            notify_leave_submitted(submission)
         return submission
 
     @action(detail=False, methods=["get"], url_path="by-form/(?P<form_id>[^/.]+)")
@@ -448,6 +454,7 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
     lookup_field = "submission_id"
 
     def perform_update(self, serializer):
+        previous_status = serializer.instance.status
         status_val = serializer.validated_data.get("status")
         if status_val and status_val != HubLeaveApproval.Status.PENDING:
             approval = serializer.save(decided_at=timezone.now())
@@ -457,6 +464,10 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
             from .services.leave_approve import on_leave_approved
 
             on_leave_approved(approval)
+        if previous_status != approval.status:
+            from .services.leave_notify import notify_leave_decision
+
+            notify_leave_decision(approval, previous_status)
 
     @action(detail=True, methods=["post"], url_path="retry-jobber-sync")
     def retry_jobber_sync(self, request, submission_id=None):
@@ -488,6 +499,71 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
         obj, _ = HubLeaveApproval.objects.get_or_create(submission=sub)
         return Response(self.get_serializer(obj).data)
+
+
+# ---------- Notifications ----------
+
+
+class NotificationPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class HubNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = HubNotificationSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = NotificationPagination
+
+    def get_queryset(self):
+        profile = getattr(self.request.user, "hub_profile", None)
+        if not profile:
+            return HubNotification.objects.none()
+        qs = HubNotification.objects.filter(recipient=profile)
+        unread = (self.request.query_params.get("unread") or "").lower()
+        if unread in ("1", "true", "yes"):
+            qs = qs.filter(read_at__isnull=True)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        profile = getattr(request.user, "hub_profile", None)
+        unread_count = 0
+        if profile:
+            unread_count = HubNotification.objects.filter(
+                recipient=profile, read_at__isnull=True
+            ).count()
+        if isinstance(response.data, dict):
+            response.data["unreadCount"] = unread_count
+        return response
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        profile = getattr(request.user, "hub_profile", None)
+        if not profile:
+            return Response({"unreadCount": 0})
+        count = HubNotification.objects.filter(
+            recipient=profile, read_at__isnull=True
+        ).count()
+        return Response({"unreadCount": count})
+
+    @action(detail=True, methods=["post"], url_path="read")
+    def mark_read(self, request, pk=None):
+        n = self.get_object()
+        if n.read_at is None:
+            n.read_at = timezone.now()
+            n.save(update_fields=["read_at"])
+        return Response(self.get_serializer(n).data)
+
+    @action(detail=False, methods=["post"], url_path="read-all")
+    def mark_all_read(self, request):
+        profile = getattr(request.user, "hub_profile", None)
+        updated = 0
+        if profile:
+            updated = HubNotification.objects.filter(
+                recipient=profile, read_at__isnull=True
+            ).update(read_at=timezone.now())
+        return Response({"updated": updated})
 
 
 # ---------- Resources ----------

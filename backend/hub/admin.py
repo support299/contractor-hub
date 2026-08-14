@@ -6,6 +6,7 @@ from .models import (
     HubForm,
     HubFormSubmission,
     HubLeaveApproval,
+    HubNotification,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -39,6 +40,14 @@ class HubFormSubmissionAdmin(admin.ModelAdmin):
 class HubLeaveApprovalAdmin(admin.ModelAdmin):
     list_display = ("submission", "status", "decided_at", "jobber_task_id", "created_at")
     list_filter = ("status",)
+
+
+@admin.register(HubNotification)
+class HubNotificationAdmin(admin.ModelAdmin):
+    list_display = ("type", "recipient", "title", "read_at", "created_at")
+    list_filter = ("type",)
+    search_fields = ("title", "body", "event_key")
+    raw_id_fields = ("recipient",)
 
 
 @admin.register(HubResourceFolder)

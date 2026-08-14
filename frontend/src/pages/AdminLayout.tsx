@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { AlertsBanner } from "@/components/AlertsBanner";
+import { NotificationBell } from "@/components/NotificationBell";
 import { Button } from "@/components/ui/button";
 import { clearAuth, isAdminSession } from "@/lib/api";
 import { useSession } from "@/lib/hub-store";
@@ -39,9 +40,12 @@ export default function AdminLayout() {
               </span>
             ) : null}
           </div>
-          <Button variant="outline" size="sm" onClick={logout}>
-            Sign out
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <NotificationBell />
+            <Button variant="outline" size="sm" onClick={logout}>
+              Sign out
+            </Button>
+          </div>
         </div>
       </header>
       <div className="flex-1 px-6 py-6 grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-6 min-h-0">

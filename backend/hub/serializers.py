@@ -7,6 +7,7 @@ from .models import (
     HubForm,
     HubFormSubmission,
     HubLeaveApproval,
+    HubNotification,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -225,6 +226,27 @@ class HubLeaveApprovalSerializer(serializers.ModelSerializer):
             return vacation_summary_for_parsed(parsed)
         except Exception:
             return None
+
+
+class HubNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HubNotification
+        fields = [
+            "id",
+            "type",
+            "title",
+            "body",
+            "link",
+            "payload",
+            "read_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def to_representation(self, instance):
+        from .services.notify import serialize_notification
+
+        return serialize_notification(instance)
 
 
 class HubTrainingMaterialSerializer(serializers.ModelSerializer):

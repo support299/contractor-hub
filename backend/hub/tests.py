@@ -53,3 +53,170 @@ class VacationResetTests(TestCase):
         self.assertTrue(changed)
         self.assertEqual(user.available_vacation_days, VACATION_DAYS_ALLOTMENT)
         self.assertEqual(user.vacation_balance_reset_on, date(2026, 1, 1))
+
+
+LEAVE_FIELDS = [
+    {"id": "u", "type": "users", "label": "Staff"},
+    {"id": "s", "type": "date", "label": "Start date"},
+    {"id": "e", "type": "date", "label": "End date"},
+    {"id": "t", "type": "dropdown", "label": "Leave type"},
+]
+
+
+class LeaveDateFormatTests(SimpleTestCase):
+    def test_same_month_range(self):
+        from hub.services.leave_notify import format_leave_dates
+
+        self.assertEqual(
+            format_leave_dates(date(2026, 8, 10), date(2026, 8, 17)),
+            "Aug 10–17",
+        )
+
+    def test_single_day(self):
+        from hub.services.leave_notify import format_leave_dates
+
+        self.assertEqual(format_leave_dates(date(2026, 8, 10), date(2026, 8, 10)), "Aug 10")
+
+
+class LeaveNotificationTests(TestCase):
+    def setUp(self):
+        from hub.models import HubForm, HubUser
+
+        self.admin = HubUser.objects.create(
+            name="Admin One",
+            email="admin1@test.local",
+            role=HubUser.Role.ADMIN,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.inactive_admin = HubUser.objects.create(
+            name="Old Admin",
+            email="old@test.local",
+            role=HubUser.Role.ADMIN,
+            status=HubUser.Status.INACTIVE,
+        )
+        self.employee = HubUser.objects.create(
+            name="Jane Doe",
+            email="jane@test.local",
+            role=HubUser.Role.EMPLOYEE,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.form = HubForm.objects.create(
+            name="Request Time Off",
+            slug="request-time-off",
+            fields=LEAVE_FIELDS,
+        )
+
+    def _submit(self, **answers):
+        from hub.models import HubFormSubmission
+
+        defaults = {
+            "u": [str(self.employee.id)],
+            "s": "2026-08-10",
+            "e": "2026-08-17",
+            "t": "Vacation",
+        }
+        defaults.update(answers)
+        return HubFormSubmission.objects.create(form=self.form, answers=defaults)
+
+    def test_submit_notifies_active_admins_only(self):
+        from hub.models import HubLeaveApproval, HubNotification
+        from hub.services.leave_notify import notify_leave_submitted
+
+        sub = self._submit()
+        HubLeaveApproval.objects.get_or_create(submission=sub)
+        notify_leave_submitted(sub)
+        notify_leave_submitted(sub)
+        qs = HubNotification.objects.filter(type="leave_submitted")
+        self.assertEqual(qs.count(), 1)
+        n = qs.get()
+        self.assertEqual(n.recipient_id, self.admin.id)
+        self.assertIn("Jane Doe submitted a Vacation request (Aug 10–17)", n.body)
+        self.assertEqual(n.link, "/admin/calendar")
+
+    def test_approve_notifies_employee_once(self):
+        from hub.models import HubLeaveApproval, HubNotification
+        from hub.services.leave_notify import notify_leave_decision
+
+        sub = self._submit()
+        approval = HubLeaveApproval.objects.create(submission=sub)
+        approval.status = HubLeaveApproval.Status.APPROVED
+        approval.save()
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        qs = HubNotification.objects.filter(type="leave_approved")
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.get().recipient_id, self.employee.id)
+        self.assertEqual(
+            qs.get().body,
+            "Your Vacation request (Aug 10–17) was approved.",
+        )
+
+    def test_reject_copy(self):
+        from hub.models import HubLeaveApproval, HubNotification
+        from hub.services.leave_notify import notify_leave_decision
+
+        sub = self._submit(t="Absent", e="2026-08-12")
+        approval = HubLeaveApproval.objects.create(
+            submission=sub, status=HubLeaveApproval.Status.REJECTED
+        )
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        n = HubNotification.objects.get(type="leave_rejected")
+        self.assertEqual(n.body, "Your Absent request (Aug 10–12) was rejected.")
+
+    def test_same_status_patch_skips(self):
+        from hub.models import HubLeaveApproval, HubNotification
+        from hub.services.leave_notify import notify_leave_decision
+
+        sub = self._submit()
+        approval = HubLeaveApproval.objects.create(
+            submission=sub, status=HubLeaveApproval.Status.APPROVED
+        )
+        notify_leave_decision(approval, HubLeaveApproval.Status.APPROVED)
+        self.assertEqual(HubNotification.objects.count(), 0)
+
+
+class NotificationApiTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubNotification, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.user = HubUser.objects.create(
+            name="Staff",
+            email="staff@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        other = HubUser.objects.create(
+            name="Other",
+            email="other@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        HubNotification.objects.create(
+            recipient=self.user,
+            type="leave_approved",
+            title="Leave approved",
+            body="Your Vacation request was approved.",
+        )
+        HubNotification.objects.create(
+            recipient=other,
+            type="leave_approved",
+            title="Nope",
+            body="Not yours.",
+        )
+        tokens = tokens_for_hub_user(self.user)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+    def test_list_own_only_and_mark_read(self):
+        res = self.client.get("/api/notifications/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["count"], 1)
+        self.assertEqual(res.data["unreadCount"], 1)
+        nid = res.data["results"][0]["id"]
+        read = self.client.post(f"/api/notifications/{nid}/read/")
+        self.assertEqual(read.status_code, 200)
+        self.assertIsNotNone(read.data["readAt"])
+        count = self.client.get("/api/notifications/unread-count/")
+        self.assertEqual(count.data["unreadCount"], 0)
+

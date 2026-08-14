@@ -14,6 +14,9 @@ router.register(
     r"leave-approvals", views.HubLeaveApprovalViewSet, basename="hub-leave-approvals"
 )
 router.register(
+    r"notifications", views.HubNotificationViewSet, basename="hub-notifications"
+)
+router.register(
     r"resource-folders", views.HubResourceFolderViewSet, basename="hub-resource-folders"
 )
 router.register(

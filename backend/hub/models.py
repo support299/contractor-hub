@@ -154,6 +154,33 @@ class HubLeaveApproval(TimeStampedModel):
         return f"Leave {self.submission_id}: {self.status}"
 
 
+class HubNotification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(
+        HubUser,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    type = models.CharField(max_length=64)
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    link = models.CharField(max_length=512, blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Idempotency for a given event (leave transition, submit, etc.)
+    event_key = models.CharField(max_length=191, unique=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "read_at", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.type} → {self.recipient_id}"
+
+
 class HubResourceFolder(TimeStampedModel):
     """Organizational folder for training materials and documents (replaces free-text categories)."""
 
