@@ -569,6 +569,14 @@ class HubNotificationViewSet(viewsets.ReadOnlyModelViewSet):
             ).update(read_at=timezone.now())
         return Response({"updated": updated})
 
+    @action(detail=False, methods=["post"], url_path="clear-all")
+    def clear_all(self, request):
+        profile = getattr(request.user, "hub_profile", None)
+        deleted = 0
+        if profile:
+            deleted, _ = HubNotification.objects.filter(recipient=profile).delete()
+        return Response({"deleted": deleted})
+
 
 # ---------- Resources ----------
 

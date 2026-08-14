@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/popover";
 import { getAccessToken } from "@/lib/api";
 import {
+  clearAllNotifications,
   fetchNotifications,
   isNotification,
   markAllNotificationsRead,
@@ -129,6 +130,19 @@ export function NotificationBell() {
     }
   };
 
+  const onClearAll = async (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setItems([]);
+    setUnread(0);
+    try {
+      await clearAllNotifications();
+    } catch (err) {
+      console.error("clearAllNotifications", err);
+      load();
+    }
+  };
+
   const badge = unread > 99 ? "99+" : String(unread);
 
   return (
@@ -144,16 +158,27 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] p-0 max-w-[90vw]">
-        <div className="flex items-center justify-between px-3 py-2 border-b">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b">
           <span className="text-sm font-semibold">Notifications</span>
-          {unread > 0 ? (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={onMarkAll}
-            >
-              Mark all read
-            </button>
+          {items.length > 0 ? (
+            <div className="flex items-center gap-2 shrink-0">
+              {unread > 0 ? (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={onMarkAll}
+                >
+                  Mark all read
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-destructive"
+                onClick={onClearAll}
+              >
+                Clear all
+              </button>
+            </div>
           ) : null}
         </div>
         <div className="max-h-80 overflow-y-auto">

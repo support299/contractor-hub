@@ -34,6 +34,10 @@ export async function markAllNotificationsRead(): Promise<void> {
   await api("/notifications/read-all/", { method: "POST" });
 }
 
+export async function clearAllNotifications(): Promise<void> {
+  await api("/notifications/clear-all/", { method: "POST" });
+}
+
 export function notificationsWsUrl(token: string): string {
   const api = (API_BASE || "").replace(/\/$/, "");
   const origin = api.replace(/\/api$/, "");

@@ -220,6 +220,17 @@ class NotificationApiTests(TestCase):
         count = self.client.get("/api/notifications/unread-count/")
         self.assertEqual(count.data["unreadCount"], 0)
 
+    def test_clear_all_deletes_own_only(self):
+        from hub.models import HubNotification
+
+        res = self.client.post("/api/notifications/clear-all/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["deleted"], 1)
+        self.assertEqual(
+            HubNotification.objects.filter(recipient=self.user).count(), 0
+        )
+        self.assertEqual(HubNotification.objects.count(), 1)
+
 
 class LeaveApprovalPermissionTests(TestCase):
     def setUp(self):
