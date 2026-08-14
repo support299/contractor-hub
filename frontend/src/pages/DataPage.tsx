@@ -61,6 +61,7 @@ import {
   type UploadedFile,
 } from "@/lib/forms-store";
 import { fetchUsers, useSession, type HubUser } from "@/lib/hub-store";
+import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 import { isAdminSession } from "@/lib/api";
 import { fetchLeaveApprovals, retryJobberSync, updateLeaveApproval, type ApprovalStatus, type LeaveApproval } from "@/lib/leave-store";
 
@@ -1400,25 +1401,13 @@ function Cell({ field, value, users, onChange, singleUserSelect }: CellProps) {
         const names = normalizeUserNames(value);
         const current = singleUserName(value);
         return (
-          <div className="min-w-[160px] max-w-xs space-y-1">
-            <Select
-              value={current || undefined}
-              onValueChange={(name) => onChange(name ? [name] : [])}
-            >
-              <SelectTrigger className="h-8">
-                <SelectValue placeholder="Select technician…" />
-              </SelectTrigger>
-              <SelectContent>
-                {active.map((u) => (
-                  <SelectItem key={u.id} value={u.name}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-                {current && !active.some((u) => u.name === current) && (
-                  <SelectItem value={current}>{current}</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+          <div className="min-w-[220px] max-w-xs space-y-1">
+            <UsersSingleSelect
+              users={active}
+              value={current}
+              onChange={(name) => onChange(name ? [name] : [])}
+              compact
+            />
             {names.length > 1 && (
               <p className="text-[10px] text-amber-700 leading-snug">
                 Had {names.length} names; pick one to keep. Others:{" "}
@@ -1428,31 +1417,14 @@ function Cell({ field, value, users, onChange, singleUserSelect }: CellProps) {
           </div>
         );
       }
-      const selected = normalizeUserNames(value);
-      const toggle = (name: string) => {
-        if (selected.includes(name)) onChange(selected.filter((n) => n !== name));
-        else onChange([...selected, name]);
-      };
       return (
-        <div className="flex flex-wrap gap-1.5 max-w-xs">
-          {active.map((u) => (
-            <label
-              key={u.id}
-              className={`text-xs px-2 py-0.5 rounded-full border cursor-pointer ${
-                selected.includes(u.name)
-                  ? "bg-emerald-100 border-emerald-300 text-emerald-700"
-                  : "bg-background"
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={selected.includes(u.name)}
-                onChange={() => toggle(u.name)}
-              />
-              {u.name}
-            </label>
-          ))}
+        <div className="min-w-[220px] max-w-sm">
+          <UsersMultiSelect
+            users={active}
+            value={normalizeUserNames(value)}
+            onChange={onChange}
+            compact
+          />
         </div>
       );
     }

@@ -39,6 +39,7 @@ import {
   type UploadedFile,
 } from "@/lib/forms-store";
 import { fetchUsers, type HubUser } from "@/lib/hub-store";
+import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 
 type Op = "equals" | "contains" | "not_contains";
 type FieldFilter = { op: Op; value: string };
@@ -589,24 +590,11 @@ function EditField({ field, value, onChange, users, singleUserSelect }: EditFiel
         return (
           <div className="space-y-1.5">
             {label}
-            <Select
-              value={current || undefined}
-              onValueChange={(name) => onChange(name ? [name] : [])}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select technician…" />
-              </SelectTrigger>
-              <SelectContent>
-                {active.map((u) => (
-                  <SelectItem key={u.id} value={u.name}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-                {current && !active.some((u) => u.name === current) && (
-                  <SelectItem value={current}>{current}</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <UsersSingleSelect
+              users={active}
+              value={current}
+              onChange={(name) => onChange(name ? [name] : [])}
+            />
             {names.length > 1 && (
               <p className="text-xs text-amber-700">
                 This row had {names.length} technicians. Choose one to keep.
@@ -616,28 +604,14 @@ function EditField({ field, value, onChange, users, singleUserSelect }: EditFiel
           </div>
         );
       }
-      const selected = normalizeUserNames(value);
-      const toggle = (name: string) => {
-        if (selected.includes(name)) onChange(selected.filter((n) => n !== name));
-        else onChange([...selected, name]);
-      };
       return (
         <div className="space-y-1.5">
           {label}
-          <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
-            {active.map((u) => (
-              <label
-                key={u.id}
-                className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/40"
-              >
-                <Checkbox
-                  checked={selected.includes(u.name)}
-                  onCheckedChange={() => toggle(u.name)}
-                />
-                <span className="text-sm">{u.name}</span>
-              </label>
-            ))}
-          </div>
+          <UsersMultiSelect
+            users={active}
+            value={normalizeUserNames(value)}
+            onChange={onChange}
+          />
         </div>
       );
     }

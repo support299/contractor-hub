@@ -42,6 +42,7 @@ import {
   type UploadedFile,
 } from "@/lib/forms-store";
 import { fetchUsers, type HubUser } from "@/lib/hub-store";
+import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 
 export default function PublicFormPage() {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -459,131 +460,6 @@ function FileUploadField({ field, value, onChange }: FileUploadFieldProps) {
         </p>
       )}
     </div>
-  );
-}
-
-interface UsersSingleSelectProps {
-  users: HubUser[];
-  value: string;
-  onChange: (name: string) => void;
-  placeholder?: string;
-}
-
-function UsersSingleSelect({
-  users,
-  value,
-  onChange,
-  placeholder = "Select technician…",
-}: UsersSingleSelectProps) {
-  if (users.length === 0 && !value) {
-    return <p className="text-sm text-muted-foreground">No users available.</p>;
-  }
-
-  return (
-    <Select value={value || undefined} onValueChange={onChange}>
-      <SelectTrigger>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {users.map((u) => (
-          <SelectItem key={u.id} value={u.name}>
-            {u.name}
-          </SelectItem>
-        ))}
-        {value && !users.some((u) => u.name === value) && (
-          <SelectItem value={value}>{value}</SelectItem>
-        )}
-      </SelectContent>
-    </Select>
-  );
-}
-
-interface UsersMultiSelectProps {
-  users: HubUser[];
-  value: string[];
-  onChange: (v: string[]) => void;
-}
-
-function UsersMultiSelect({ users, value, onChange }: UsersMultiSelectProps) {
-  const [open, setOpen] = useState(false);
-
-  if (users.length === 0) {
-    return <p className="text-sm text-muted-foreground">No users available.</p>;
-  }
-
-  const toggle = (name: string) => {
-    if (value.includes(name)) onChange(value.filter((n) => n !== name));
-    else onChange([...value, name]);
-  };
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between h-auto min-h-10 py-1.5"
-        >
-          <div className="flex flex-wrap gap-1 items-center">
-            {value.length === 0 ? (
-              <span className="text-muted-foreground">Select users…</span>
-            ) : (
-              value.map((name) => (
-                <Badge key={name} variant="secondary" className="gap-1">
-                  {name}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggle(name);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggle(name);
-                      }
-                    }}
-                    className="hover:text-destructive cursor-pointer inline-flex"
-                  >
-                    <X className="h-3 w-3" />
-                  </span>
-                </Badge>
-              ))
-            )}
-          </div>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search users…" />
-          <CommandList>
-            <CommandEmpty>No users found.</CommandEmpty>
-            <CommandGroup>
-              {users.map((u) => {
-                const selected = value.includes(u.name);
-                return (
-                  <CommandItem
-                    key={u.id}
-                    value={u.name}
-                    onSelect={() => toggle(u.name)}
-                  >
-                    <Check
-                      className={`mr-2 h-4 w-4 ${selected ? "opacity-100" : "opacity-0"}`}
-                    />
-                    {u.name}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }
 
