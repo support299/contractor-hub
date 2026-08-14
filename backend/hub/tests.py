@@ -220,3 +220,65 @@ class NotificationApiTests(TestCase):
         count = self.client.get("/api/notifications/unread-count/")
         self.assertEqual(count.data["unreadCount"], 0)
 
+
+class LeaveApprovalPermissionTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubForm, HubFormSubmission, HubLeaveApproval, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Admin",
+            email="admin-leave@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.employee = HubUser.objects.create(
+            name="Staff",
+            email="staff-leave@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        form = HubForm.objects.create(
+            name="Request Time Off",
+            slug="request-time-off",
+            fields=LEAVE_FIELDS,
+        )
+        sub = HubFormSubmission.objects.create(
+            form=form,
+            answers={
+                "u": [str(self.employee.id)],
+                "s": "2026-08-10",
+                "e": "2026-08-12",
+                "t": "Absent",
+            },
+        )
+        self.approval = HubLeaveApproval.objects.create(submission=sub)
+        self.url = f"/api/leave-approvals/{sub.id}/"
+        self.admin_client = APIClient()
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+        self.staff_client = APIClient()
+        self.staff_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+
+    def test_staff_can_list_but_cannot_approve(self):
+        listed = self.staff_client.get("/api/leave-approvals/")
+        self.assertEqual(listed.status_code, 200)
+        denied = self.staff_client.patch(
+            self.url, {"status": "approved"}, format="json"
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.approval.refresh_from_db()
+        self.assertEqual(self.approval.status, "pending")
+
+    def test_admin_can_reject(self):
+        res = self.admin_client.patch(
+            self.url, {"status": "rejected"}, format="json"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.approval.refresh_from_db()
+        self.assertEqual(self.approval.status, "rejected")
+
+

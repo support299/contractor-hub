@@ -60,7 +60,8 @@ import {
   type PayrollOption,
   type UploadedFile,
 } from "@/lib/forms-store";
-import { fetchUsers, type HubUser } from "@/lib/hub-store";
+import { fetchUsers, useSession, type HubUser } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
 import { fetchLeaveApprovals, retryJobberSync, updateLeaveApproval, type ApprovalStatus, type LeaveApproval } from "@/lib/leave-store";
 
 const LEAVE_FORM_SLUG = "request-time-off";
@@ -353,6 +354,7 @@ interface FormDataTableProps {
 }
 
 function FormDataTable({ form }: FormDataTableProps) {
+  const canApproveLeave = isAdminSession(useSession());
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
   const [users, setUsers] = useState<HubUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -842,6 +844,7 @@ function FormDataTable({ form }: FormDataTableProps) {
                 ))}
                 {isLeaveForm && (
                   <td className="px-2 py-1.5">
+                    {canApproveLeave ? (
                     <Select
                       value={approvals[s.id]?.status ?? "pending"}
                       onValueChange={(v) => setApprovalStatus(s.id, v as ApprovalStatus)}
@@ -855,6 +858,11 @@ function FormDataTable({ form }: FormDataTableProps) {
                         <SelectItem value="rejected">Rejected</SelectItem>
                       </SelectContent>
                     </Select>
+                    ) : (
+                      <span className="text-xs capitalize text-muted-foreground">
+                        {approvals[s.id]?.status ?? "pending"}
+                      </span>
+                    )}
                     {approvals[s.id]?.vacation_summary?.leave_type === "Vacation" && (
                       <div className="mt-1 text-[10px] leading-snug text-amber-900">
                         Avail {approvals[s.id].vacation_summary?.available_vacation_days ?? "—"} ·{" "}
@@ -864,7 +872,7 @@ function FormDataTable({ form }: FormDataTableProps) {
                           : ""}
                       </div>
                     )}
-                    {approvals[s.id]?.jobber_sync_error ? (
+                    {canApproveLeave && approvals[s.id]?.jobber_sync_error ? (
                       <button
                         type="button"
                         className="mt-1 text-[10px] text-rose-700 underline"

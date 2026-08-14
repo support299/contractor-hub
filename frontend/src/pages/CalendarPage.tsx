@@ -45,6 +45,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { isAdminSession } from "@/lib/api";
+import { useSession } from "@/lib/hub-store";
 
 interface LeaveRequest {
   submission: FormSubmission;
@@ -163,6 +165,7 @@ function valueAsArray(v: unknown): string[] {
 }
 
 export default function CalendarPage() {
+  const canApprove = isAdminSession(useSession());
   const forms = useForms();
   const leaveForm = useMemo(
     () => forms.find((f) => f.slug === LEAVE_FORM_SLUG),
@@ -204,7 +207,7 @@ export default function CalendarPage() {
       for (const a of approvalList) appMap[a.submission_id] = a;
       // Backfill missing approvals (e.g. older submissions created before this form was tracked)
       const missing = subs.filter((s) => !appMap[s.id]);
-      if (missing.length > 0) {
+      if (missing.length > 0 && isAdminSession()) {
         const created = await Promise.all(
           missing.map((s) => ensureLeaveApproval(s.id).catch(() => null)),
         );
@@ -492,7 +495,7 @@ export default function CalendarPage() {
         <div className="px-4 py-3 border-b">
           <h2 className="font-semibold">Leave Requests</h2>
           <p className="text-xs text-muted-foreground">
-            Approve to add to calendar
+            {canApprove ? "Approve to add to calendar" : "Approved leave appears on the calendar"}
           </p>
         </div>
 
@@ -613,6 +616,7 @@ export default function CalendarPage() {
               <div className="text-[11px] text-muted-foreground">
                 Submitted {new Date(r.submission.createdAt).toLocaleString()}
               </div>
+              {canApprove ? (
               <div className="flex gap-1.5 pt-1">
                 {r.status !== "approved" && (
                   <Button
@@ -652,6 +656,7 @@ export default function CalendarPage() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
+              ) : null}
             </div>
           ))}
         </div>

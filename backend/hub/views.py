@@ -449,9 +449,13 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
         "submission", "submission__form"
     ).all()
     serializer_class = HubLeaveApprovalSerializer
-    permission_classes = [HubAccess]
     pagination_class = None
     lookup_field = "submission_id"
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [HubAccess()]
+        return [IsAdminRole()]
 
     def perform_update(self, serializer):
         previous_status = serializer.instance.status
