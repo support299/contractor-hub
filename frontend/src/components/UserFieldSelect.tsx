@@ -34,7 +34,7 @@ export function UserAvatar({
       <img
         src={picture}
         alt=""
-        className={cn("shrink-0 rounded-md object-cover bg-muted", className)}
+        className={cn("shrink-0 rounded-lg object-cover object-top bg-muted", className)}
         style={{ width: size, height: size }}
       />
     );
@@ -42,7 +42,7 @@ export function UserAvatar({
   return (
     <div
       className={cn(
-        "shrink-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground",
+        "shrink-0 rounded-lg bg-muted flex items-center justify-center text-muted-foreground",
         className,
       )}
       style={{ width: size, height: size }}
@@ -55,23 +55,24 @@ export function UserAvatar({
 
 function UserFieldRow({
   user,
-  compact,
+  variant = "list",
 }: {
   user: Pick<HubUser, "name" | "picture">;
-  compact?: boolean;
+  variant?: "list" | "trigger";
 }) {
+  const list = variant === "list";
   return (
-    <div className="flex items-center justify-between gap-3 w-full min-w-0">
+    <div className={cn("flex items-center justify-between w-full min-w-0", list ? "gap-4" : "gap-3")}>
       <div className="min-w-0 text-left">
-        <div className="font-semibold truncate leading-tight">{user.name}</div>
-        {!compact && (
+        <div className={cn("font-semibold truncate leading-tight", list && "text-base")}>{user.name}</div>
+        {list && (
           <>
-            <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">Name</div>
-            <div className="text-sm truncate leading-tight">{user.name}</div>
+            <div className="text-xs text-muted-foreground leading-tight mt-1">Name</div>
+            <div className="text-sm truncate leading-tight mt-0.5">{user.name}</div>
           </>
         )}
       </div>
-      <UserAvatar picture={user.picture} name={user.name} size={compact ? 32 : 40} />
+      <UserAvatar picture={user.picture} name={user.name} size={list ? 80 : 48} />
     </div>
   );
 }
@@ -119,17 +120,17 @@ export function UsersSingleSelect({
           )}
         >
           {selected ? (
-            <UserFieldRow user={selected} compact />
+            <UserFieldRow user={selected} variant="trigger" />
           ) : (
             <span className="text-muted-foreground text-sm">{placeholder}</span>
           )}
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search" />
-          <CommandList>
+          <CommandList className="max-h-[420px]">
             <CommandEmpty>No users found.</CommandEmpty>
             <CommandGroup>
               {users.map((u) => (
@@ -140,9 +141,9 @@ export function UsersSingleSelect({
                     onChange(u.name);
                     setOpen(false);
                   }}
-                  className="items-stretch py-2 [&_svg]:size-auto"
+                  className="items-stretch py-2.5 px-3 [&_svg]:size-auto"
                 >
-                  <UserFieldRow user={u} compact={compact} />
+                  <UserFieldRow user={u} />
                 </CommandItem>
               ))}
               {value && !users.some((u) => u.name === value) && (
@@ -152,9 +153,9 @@ export function UsersSingleSelect({
                     onChange(value);
                     setOpen(false);
                   }}
-                  className="items-stretch py-2 [&_svg]:size-auto"
+                  className="items-stretch py-2.5 px-3 [&_svg]:size-auto"
                 >
-                  <UserFieldRow user={{ name: value }} compact={compact} />
+                  <UserFieldRow user={{ name: value }} />
                 </CommandItem>
               )}
             </CommandGroup>
@@ -237,10 +238,10 @@ export function UsersMultiSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search" />
-          <CommandList>
+          <CommandList className="max-h-[420px]">
             <CommandEmpty>No users found.</CommandEmpty>
             <CommandGroup>
               {users.map((u) => {
@@ -250,12 +251,12 @@ export function UsersMultiSelect({
                     key={u.id}
                     value={`${u.name} ${u.email ?? ""}`}
                     onSelect={() => toggle(u.name)}
-                    className="items-stretch py-2 [&_svg]:size-auto"
+                    className="items-stretch py-2.5 px-3 [&_svg]:size-auto"
                   >
                     <Check
                       className={`mr-2 mt-1 h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`}
                     />
-                    <UserFieldRow user={u} compact={compact} />
+                    <UserFieldRow user={u} />
                   </CommandItem>
                 );
               })}
