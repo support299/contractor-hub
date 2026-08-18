@@ -80,10 +80,45 @@ class HubUser(TimeStampedModel):
             models.Index(fields=["role"]),
             models.Index(fields=["status"]),
             models.Index(fields=["email"]),
+            models.Index(fields=["jobber_id"]),
         ]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.role})"
+
+
+LOCK_IN_POSITION_AMOUNTS = {
+    "team leader": 20,
+    "cleaning specialist": 15,
+    "cleaning technician": 10,
+}
+
+LOCK_IN_POSITION_ALIASES = {
+    "team leader": "Team Leader",
+    "teamleader": "Team Leader",
+    "team lead": "Team Leader",
+    "tl": "Team Leader",
+    "cleaning specialist": "Cleaning Specialist",
+    "specialist": "Cleaning Specialist",
+    "cleaning technician": "Cleaning Technician",
+    "technician": "Cleaning Technician",
+    "tech": "Cleaning Technician",
+}
+
+
+def normalize_lock_in_position(raw: str) -> str:
+    key = " ".join((raw or "").strip().lower().split())
+    return LOCK_IN_POSITION_ALIASES.get(key, (raw or "").strip())
+
+
+def lock_in_bonus_amount(raw_position: str):
+    """Return (canonical_position, Decimal amount). Unknown position → amount 0."""
+    canonical = normalize_lock_in_position(raw_position)
+    key = " ".join(canonical.lower().split())
+    amount = LOCK_IN_POSITION_AMOUNTS.get(key)
+    if amount is None:
+        return canonical, Decimal("0")
+    return canonical, Decimal(amount)
 
 
 class HubForm(TimeStampedModel):
@@ -265,3 +300,116 @@ class HubAlert(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.message[:60]
+
+
+class HubVisit(TimeStampedModel):
+    """Jobber visit persistence (replaces Airtable Visits for lock-in)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    jobber_visit_id = models.CharField(max_length=255, unique=True)
+    title = models.CharField(max_length=512, blank=True, default="")
+    client_jobber_id = models.CharField(max_length=255, blank=True, default="")
+    client_name = models.CharField(max_length=255, blank=True, default="")
+    jobber_job_id = models.CharField(max_length=255, blank=True, default="")
+    job_type = models.CharField(max_length=64, blank=True, default="")
+    start_at = models.DateTimeField(null=True, blank=True)
+    technicians = models.ManyToManyField(
+        HubUser, blank=True, related_name="jobber_visits"
+    )
+
+    class Meta:
+        ordering = ["-start_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["client_jobber_id"]),
+            models.Index(fields=["jobber_job_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.jobber_visit_id
+
+
+class PendingLockIn(TimeStampedModel):
+    """Airtable Pending Quotes replacement."""
+
+    class Status(models.TextChoices):
+        IN_PROCESS = "in_process", "In Process"
+        CONFIRMED = "confirmed", "Confirmed"
+        EXPIRED = "expired", "Expired"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    quote_id = models.CharField(max_length=255, unique=True)
+    client_jobber_id = models.CharField(max_length=255, db_index=True)
+    client_name = models.CharField(max_length=255, blank=True, default="")
+    recurring_jobber_job_id = models.CharField(max_length=255, blank=True, default="")
+    original_visit_ids = models.JSONField(default=list, blank=True)
+    quote_accepted = models.BooleanField(default=True)
+    locked_in = models.BooleanField(default=False)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    quote_sent_at = models.DateTimeField(null=True, blank=True)
+    quote_approved_at = models.DateTimeField(null=True, blank=True)
+    frequency = models.CharField(max_length=64, blank=True, default="")
+    eligibility_expires_at = models.DateTimeField(null=True, blank=True)
+    expected_first_visit_at = models.DateTimeField(null=True, blank=True)
+    first_recurring_visit_id = models.CharField(max_length=255, blank=True, default="")
+    first_recurring_visit_at = models.DateTimeField(null=True, blank=True)
+    technicians = models.ManyToManyField(
+        HubUser, blank=True, related_name="pending_lock_ins"
+    )
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.IN_PROCESS
+    )
+    expired_reason = models.CharField(max_length=255, blank=True, default="")
+    confirmation_sms_sent = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["client_jobber_id", "locked_in"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.client_name} quote {self.quote_id}"
+
+
+class LockInBonus(TimeStampedModel):
+    """Per-technician lock-in bonus (replaces Airtable Bonuses Locked-In rows)."""
+
+    class Status(models.TextChoices):
+        IN_PROCESS = "in_process", "In Process"
+        CONFIRMED = "confirmed", "Confirmed"
+        EXPIRED = "expired", "Expired"
+        PAID = "paid", "Paid"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pending = models.ForeignKey(
+        PendingLockIn, on_delete=models.CASCADE, related_name="bonuses"
+    )
+    technician = models.ForeignKey(
+        HubUser, on_delete=models.PROTECT, related_name="lock_in_bonuses"
+    )
+    bonus_type = models.CharField(max_length=64, default="Locked-In")
+    status = models.CharField(
+        max_length=32, choices=Status.choices, default=Status.IN_PROCESS
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    position_snapshot = models.CharField(max_length=128, blank=True, default="")
+    in_process_date = models.DateTimeField(null=True, blank=True)
+    confirmed_date = models.DateTimeField(null=True, blank=True)
+    bonus_confirmed = models.BooleanField(default=False)
+    bonus_paid = models.BooleanField(default=False)
+    paid_date = models.DateTimeField(null=True, blank=True)
+    payroll_reference = models.CharField(max_length=255, blank=True, default="")
+    potential_sms_sent = models.BooleanField(default=False)
+    confirmation_sms_sent = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = [("pending", "technician")]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["technician", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.bonus_type} {self.status} {self.technician_id}"

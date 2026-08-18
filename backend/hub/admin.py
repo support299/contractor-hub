@@ -10,6 +10,9 @@ from .models import (
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
+    HubVisit,
+    LockInBonus,
+    PendingLockIn,
 )
 
 
@@ -83,3 +86,48 @@ class HubDocumentAdmin(admin.ModelAdmin):
 class HubAlertAdmin(admin.ModelAdmin):
     list_display = ("message", "active", "sort_order", "created_at")
     list_filter = ("active",)
+
+
+@admin.register(HubVisit)
+class HubVisitAdmin(admin.ModelAdmin):
+    list_display = (
+        "jobber_visit_id",
+        "client_name",
+        "job_type",
+        "start_at",
+        "created_at",
+    )
+    search_fields = ("jobber_visit_id", "client_name", "client_jobber_id", "jobber_job_id")
+    list_filter = ("job_type",)
+    filter_horizontal = ("technicians",)
+
+
+@admin.register(PendingLockIn)
+class PendingLockInAdmin(admin.ModelAdmin):
+    list_display = (
+        "client_name",
+        "quote_id",
+        "status",
+        "locked_in",
+        "frequency",
+        "eligibility_expires_at",
+        "created_at",
+    )
+    search_fields = ("quote_id", "client_name", "client_jobber_id")
+    list_filter = ("status", "locked_in")
+    filter_horizontal = ("technicians",)
+
+
+@admin.register(LockInBonus)
+class LockInBonusAdmin(admin.ModelAdmin):
+    list_display = (
+        "technician",
+        "status",
+        "amount",
+        "position_snapshot",
+        "bonus_paid",
+        "created_at",
+    )
+    list_filter = ("status", "bonus_paid", "bonus_type")
+    search_fields = ("technician__name", "pending__client_name", "pending__quote_id")
+    raw_id_fields = ("technician", "pending")

@@ -293,3 +293,152 @@ class LeaveApprovalPermissionTests(TestCase):
         self.assertEqual(self.approval.status, "rejected")
 
 
+class LockInPositionAmountTests(SimpleTestCase):
+    def test_canonical_amounts(self):
+        from hub.models import lock_in_bonus_amount
+
+        pos, amt = lock_in_bonus_amount("Team Leader")
+        self.assertEqual(pos, "Team Leader")
+        self.assertEqual(amt, Decimal("20"))
+        pos, amt = lock_in_bonus_amount("cleaning technician")
+        self.assertEqual(pos, "Cleaning Technician")
+        self.assertEqual(amt, Decimal("10"))
+
+    def test_unknown_is_zero(self):
+        from hub.models import lock_in_bonus_amount
+
+        pos, amt = lock_in_bonus_amount("Marketing Manager")
+        self.assertEqual(amt, Decimal("0"))
+        self.assertEqual(pos, "Marketing Manager")
+
+
+from rest_framework.test import APIClient as _APIClient
+
+
+class LockInFlowTests(TestCase):
+    def setUp(self):
+        from hub.models import HubUser
+
+        self.tech = HubUser.objects.create(
+            name="Alex Tech",
+            phone="+15551212",
+            position="Cleaning Technician",
+            jobber_id="jb_user_1",
+        )
+        self.lead = HubUser.objects.create(
+            name="Pat Lead",
+            phone="+15551313",
+            position="Team Leader",
+            jobber_id="jb_user_2",
+        )
+        self.client_api = _APIClient()
+
+    def test_upsert_visit_and_stage1_idempotent(self):
+        up = self.client_api.post(
+            "/api/internal/lock-in/visits/upsert/",
+            {
+                "jobber_visit_id": "v1",
+                "title": "First Cleaning",
+                "client_id": "c1",
+                "client_name": "Jane",
+                "job_id": "job_fc",
+                "job_type": "ONE_OFF",
+                "assignee_jobber_ids": ["jb_user_1", "jb_user_2"],
+            },
+            format="json",
+        )
+        self.assertEqual(up.status_code, 200)
+        self.assertEqual(len(up.data["technicians"]), 2)
+
+        payload = {
+            "quote_id": "q1",
+            "client_id": "c1",
+            "client_name": "Jane",
+            "job_id": "job_recurring",
+            "original_visit_ids": ["v1"],
+            "frequency": "Weekly",
+            "technician_jobber_ids": ["jb_user_1", "jb_user_2"],
+        }
+        a = self.client_api.post(
+            "/api/internal/lock-in/pending/", payload, format="json"
+        )
+        self.assertEqual(a.status_code, 201)
+        self.assertTrue(a.data["created"])
+        self.assertEqual(len(a.data["pending"]["bonuses"]), 2)
+        amounts = sorted(b["amount"] for b in a.data["pending"]["bonuses"])
+        self.assertEqual(amounts, ["10.00", "20.00"])
+
+        b = self.client_api.post(
+            "/api/internal/lock-in/pending/", payload, format="json"
+        )
+        self.assertEqual(b.status_code, 200)
+        self.assertFalse(b.data["created"])
+        self.assertEqual(a.data["pending"]["id"], b.data["pending"]["id"])
+
+        # Rule 1: another quote same first-clean visit
+        c = self.client_api.post(
+            "/api/internal/lock-in/pending/",
+            {**payload, "quote_id": "q2"},
+            format="json",
+        )
+        self.assertFalse(c.data["created"])
+        self.assertEqual(c.data["pending"]["quote_id"], "q1")
+
+    def test_confirm_then_duplicate_stays_confirmed(self):
+        self.client_api.post(
+            "/api/internal/lock-in/pending/",
+            {
+                "quote_id": "q1",
+                "client_id": "c1",
+                "client_name": "Jane",
+                "job_id": "job_r",
+                "technician_jobber_ids": ["jb_user_1"],
+            },
+            format="json",
+        )
+        lookup = self.client_api.get(
+            "/api/internal/lock-in/pending/lookup/?client_id=c1&job_id=job_r",
+        )
+        pk = lookup.data["pending"]["id"]
+        first = self.client_api.post(
+            f"/api/internal/lock-in/pending/{pk}/confirm/",
+            {"visit_id": "rv1"},
+            format="json",
+        )
+        self.assertTrue(first.data["pending"]["locked_in"])
+        self.assertEqual(first.data["pending"]["status"], "confirmed")
+        self.assertEqual(first.data["pending"]["bonuses"][0]["status"], "confirmed")
+
+        second = self.client_api.post(
+            f"/api/internal/lock-in/pending/{pk}/confirm/",
+            {"visit_id": "rv2"},
+            format="json",
+        )
+        self.assertEqual(second.data["pending"]["first_recurring_visit_id"], "rv1")
+        lookup2 = self.client_api.get(
+            "/api/internal/lock-in/pending/lookup/?client_id=c1",
+        )
+        self.assertIsNone(lookup2.data["pending"])
+
+    def test_expire(self):
+        res = self.client_api.post(
+            "/api/internal/lock-in/pending/",
+            {
+                "quote_id": "q1",
+                "client_id": "c1",
+                "client_name": "Jane",
+                "technician_jobber_ids": ["jb_user_1"],
+            },
+            format="json",
+        )
+        pk = res.data["pending"]["id"]
+        exp = self.client_api.post(
+            f"/api/internal/lock-in/pending/{pk}/expire/",
+            {"reason": "Eligibility Period Exceeded"},
+            format="json",
+        )
+        self.assertEqual(exp.data["pending"]["status"], "expired")
+        self.assertEqual(exp.data["pending"]["bonuses"][0]["status"], "expired")
+
+
+

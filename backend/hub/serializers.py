@@ -11,6 +11,9 @@ from .models import (
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
+    HubVisit,
+    LockInBonus,
+    PendingLockIn,
 )
 
 
@@ -491,3 +494,83 @@ class FileUploadSerializer(serializers.Serializer):
         default="form-uploads",
         required=False,
     )
+
+
+class HubVisitSerializer(serializers.ModelSerializer):
+    technician_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HubVisit
+        fields = [
+            "id",
+            "jobber_visit_id",
+            "title",
+            "client_jobber_id",
+            "client_name",
+            "jobber_job_id",
+            "job_type",
+            "start_at",
+            "technician_ids",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_technician_ids(self, obj):
+        return [str(u.id) for u in obj.technicians.all()]
+
+
+class PendingLockInSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PendingLockIn
+        fields = [
+            "id",
+            "quote_id",
+            "client_jobber_id",
+            "client_name",
+            "recurring_jobber_job_id",
+            "original_visit_ids",
+            "quote_accepted",
+            "locked_in",
+            "locked_at",
+            "quote_sent_at",
+            "quote_approved_at",
+            "frequency",
+            "eligibility_expires_at",
+            "expected_first_visit_at",
+            "first_recurring_visit_id",
+            "first_recurring_visit_at",
+            "status",
+            "expired_reason",
+            "confirmation_sms_sent",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class LockInBonusSerializer(serializers.ModelSerializer):
+    technician_name = serializers.CharField(source="technician.name", read_only=True)
+    client_name = serializers.CharField(source="pending.client_name", read_only=True)
+
+    class Meta:
+        model = LockInBonus
+        fields = [
+            "id",
+            "pending",
+            "technician",
+            "technician_name",
+            "client_name",
+            "bonus_type",
+            "status",
+            "amount",
+            "position_snapshot",
+            "in_process_date",
+            "confirmed_date",
+            "bonus_confirmed",
+            "bonus_paid",
+            "paid_date",
+            "payroll_reference",
+            "potential_sms_sent",
+            "confirmation_sms_sent",
+            "created_at",
+            "updated_at",
+        ]

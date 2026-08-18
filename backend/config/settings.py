@@ -217,3 +217,4 @@ OTP_REQUEST_COOLDOWN_SECONDS = int(os.getenv("OTP_REQUEST_COOLDOWN_SECONDS", "60
 SERVICE_CREATOR_BASE_URL = os.getenv(
     "SERVICE_CREATOR_BASE_URL", "https://site.cleanonthego.com"
 ).rstrip("/")
+
