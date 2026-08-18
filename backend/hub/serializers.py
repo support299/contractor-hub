@@ -130,6 +130,15 @@ class HubUserSerializer(serializers.ModelSerializer):
         return data
 
 
+class HubUserDirectorySerializer(serializers.ModelSerializer):
+    """Public form picker: names and photos only."""
+
+    class Meta:
+        model = HubUser
+        fields = ["id", "name", "picture"]
+        read_only_fields = fields
+
+
 class HubFormSerializer(serializers.ModelSerializer):
     extraFields = serializers.JSONField(source="extra_fields", required=False)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)

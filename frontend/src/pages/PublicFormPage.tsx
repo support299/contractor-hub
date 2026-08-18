@@ -41,7 +41,7 @@ import {
   type PayrollOption,
   type UploadedFile,
 } from "@/lib/forms-store";
-import { fetchUsers, type HubUser } from "@/lib/hub-store";
+import { fetchPublicFormUsers, type HubUser } from "@/lib/hub-store";
 import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 
 export default function PublicFormPage() {
@@ -54,7 +54,9 @@ export default function PublicFormPage() {
   const [users, setUsers] = useState<HubUser[]>([]);
 
   useEffect(() => {
-    fetchUsers().then(setUsers);
+    fetchPublicFormUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, []);
 
   useEffect(() => {

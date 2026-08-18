@@ -35,6 +35,7 @@ from .serializers import (
     HubNotificationSerializer,
     HubResourceFolderSerializer,
     HubTrainingMaterialSerializer,
+    HubUserDirectorySerializer,
     HubUserSerializer,
     MeUpdateSerializer,
     PasswordLoginSerializer,
@@ -305,6 +306,8 @@ class HubUserViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "name"]
 
     def get_permissions(self):
+        if self.action == "directory":
+            return [AllowAny()]
         if self.action in ("list", "retrieve", "sectors", "me"):
             return [HubAccess()]
         return [IsAdminRole()]
@@ -327,6 +330,11 @@ class HubUserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         ensure_vacation_balance_current(user, date.today())
         return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="directory")
+    def directory(self, request):
+        qs = HubUser.objects.filter(status=HubUser.Status.ACTIVE).order_by("name")
+        return Response(HubUserDirectorySerializer(qs, many=True).data)
 
     @action(detail=False, methods=["get"], url_path="sectors")
     def sectors(self, request):

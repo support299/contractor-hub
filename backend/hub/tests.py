@@ -441,4 +441,41 @@ class LockInFlowTests(TestCase):
         self.assertEqual(exp.data["pending"]["bonuses"][0]["status"], "expired")
 
 
+class PublicUserDirectoryTests(TestCase):
+    def test_anonymous_gets_active_names_and_pictures_only(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+
+        HubUser.objects.create(
+            name="Active Tech",
+            email="a@example.com",
+            phone="555",
+            regular_rate=Decimal("25"),
+            picture="https://example.com/a.jpg",
+            status=HubUser.Status.ACTIVE,
+        )
+        HubUser.objects.create(
+            name="Inactive Tech",
+            picture="https://example.com/i.jpg",
+            status=HubUser.Status.INACTIVE,
+        )
+
+        res = APIClient().get("/api/users/directory/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)
+        row = res.data[0]
+        self.assertEqual(row["name"], "Active Tech")
+        self.assertEqual(row["picture"], "https://example.com/a.jpg")
+        self.assertEqual(set(row.keys()), {"id", "name", "picture"})
+        self.assertNotIn("email", row)
+        self.assertNotIn("regularRate", row)
+
+    def test_full_user_list_still_requires_auth(self):
+        from rest_framework.test import APIClient
+
+        res = APIClient().get("/api/users/")
+        self.assertEqual(res.status_code, 401)
+
+
 

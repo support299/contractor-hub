@@ -85,6 +85,21 @@ export async function fetchUsers(): Promise<HubUser[]> {
   return (data ?? []).map(normalize);
 }
 
+/** Active staff for public/embed forms. Names and photos only. */
+export async function fetchPublicFormUsers(): Promise<HubUser[]> {
+  const data = await api<Record<string, unknown>[]>("/users/directory/", { auth: false });
+  return (data ?? []).map((u) => ({
+    id: String(u.id),
+    name: String(u.name ?? ""),
+    email: "",
+    phone: "",
+    role: "employee" as Role,
+    status: "active" as UserStatus,
+    sectors: [],
+    picture: (u.picture as string) || undefined,
+  }));
+}
+
 export async function addUser(user: Omit<HubUser, "id">): Promise<HubUser | null> {
   const data = await api<Record<string, unknown>>("/users/", {
     method: "POST",
