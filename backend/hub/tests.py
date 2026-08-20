@@ -368,12 +368,25 @@ class LockInFlowTests(TestCase):
         amounts = sorted(b["amount"] for b in a.data["pending"]["bonuses"])
         self.assertEqual(amounts, ["10.00", "20.00"])
 
+        from hub.models import HubNotification
+
+        pots = HubNotification.objects.filter(type="lock_in_potential")
+        self.assertEqual(pots.count(), 2)
+        bodies = sorted(pots.values_list("body", flat=True))
+        self.assertTrue(any("$10" in b and "Weekly" in b and "Jane" in b for b in bodies))
+        self.assertTrue(any("$20" in b for b in bodies))
+        self.assertEqual(
+            set(pots.values_list("recipient_id", flat=True)),
+            {self.tech.id, self.lead.id},
+        )
+
         b = self.client_api.post(
             "/api/internal/lock-in/pending/", payload, format="json"
         )
         self.assertEqual(b.status_code, 200)
         self.assertFalse(b.data["created"])
         self.assertEqual(a.data["pending"]["id"], b.data["pending"]["id"])
+        self.assertEqual(HubNotification.objects.filter(type="lock_in_potential").count(), 2)
 
         # Rule 1: another quote same first-clean visit
         c = self.client_api.post(
@@ -409,12 +422,21 @@ class LockInFlowTests(TestCase):
         self.assertEqual(first.data["pending"]["status"], "confirmed")
         self.assertEqual(first.data["pending"]["bonuses"][0]["status"], "confirmed")
 
+        from hub.models import HubNotification
+
+        confirmed = HubNotification.objects.filter(type="lock_in_confirmed")
+        self.assertEqual(confirmed.count(), 1)
+        self.assertEqual(confirmed.get().recipient_id, self.tech.id)
+        self.assertIn("$10", confirmed.get().body)
+        self.assertIn("Jane", confirmed.get().body)
+
         second = self.client_api.post(
             f"/api/internal/lock-in/pending/{pk}/confirm/",
             {"visit_id": "rv2"},
             format="json",
         )
         self.assertEqual(second.data["pending"]["first_recurring_visit_id"], "rv1")
+        self.assertEqual(HubNotification.objects.filter(type="lock_in_confirmed").count(), 1)
         lookup2 = self.client_api.get(
             "/api/internal/lock-in/pending/lookup/?client_id=c1",
         )
@@ -439,6 +461,9 @@ class LockInFlowTests(TestCase):
         )
         self.assertEqual(exp.data["pending"]["status"], "expired")
         self.assertEqual(exp.data["pending"]["bonuses"][0]["status"], "expired")
+        from hub.models import HubNotification
+
+        self.assertEqual(HubNotification.objects.filter(type="lock_in_confirmed").count(), 0)
 
 
 class PublicUserDirectoryTests(TestCase):
