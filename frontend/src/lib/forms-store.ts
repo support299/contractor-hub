@@ -246,6 +246,14 @@ export async function deleteForm(id: string) {
   emitChange();
 }
 
+export async function duplicateForm(id: string): Promise<HubForm> {
+  const data = await api<Record<string, unknown>>(`/forms/${id}/duplicate/`, {
+    method: "POST",
+  });
+  emitChange();
+  return fromApi(data);
+}
+
 export function useForms() {
   const [forms, setForms] = useState<HubForm[]>([]);
   useEffect(() => {

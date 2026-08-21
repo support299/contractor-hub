@@ -1,3 +1,4 @@
+import copy
 import re
 import uuid
 from pathlib import Path
@@ -380,6 +381,31 @@ class HubFormViewSet(viewsets.ModelViewSet):
         except HubForm.DoesNotExist:
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
         return Response(self.get_serializer(form).data)
+
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, id=None):
+        original = self.get_object()
+        name = f"Copy of {original.name}"[:255]
+        base = (original.slug or "form")[:75]
+        candidate = f"{base}-copy"[:80]
+        n = 2
+        while HubForm.objects.filter(slug=candidate).exists():
+            suffix = f"-copy-{n}"
+            candidate = f"{base[: 80 - len(suffix)]}{suffix}"
+            n += 1
+        clone = HubForm.objects.create(
+            name=name,
+            description=original.description,
+            url="",
+            slug=candidate,
+            status=original.status,
+            fields=copy.deepcopy(original.fields),
+            extra_fields=copy.deepcopy(original.extra_fields),
+        )
+        return Response(
+            self.get_serializer(clone).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class HubFormSubmissionViewSet(viewsets.ModelViewSet):
