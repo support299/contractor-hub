@@ -159,6 +159,24 @@ class HubFormSubmission(models.Model):
         return f"Submission {self.id} → {self.form.slug}"
 
 
+class HubTipConfirmLog(models.Model):
+    """Marks that tip-confirm automation already ran for this submission."""
+
+    submission = models.OneToOneField(
+        HubFormSubmission,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="tip_confirm_log",
+    )
+    ran_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ran_at"]
+
+    def __str__(self) -> str:
+        return f"Tip confirm {self.submission_id}"
+
+
 class HubLeaveApproval(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

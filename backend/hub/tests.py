@@ -503,4 +503,190 @@ class PublicUserDirectoryTests(TestCase):
         self.assertEqual(res.status_code, 401)
 
 
+TIPS_FIELDS = [
+    {"id": "c", "type": "single_line", "label": "Client's Name"},
+    {"id": "a", "type": "number", "label": "Tip per Technician"},
+    {"id": "m", "type": "dropdown", "label": "Method"},
+    {"id": "p", "type": "date", "label": "Paid Date"},
+    {"id": "v", "type": "date", "label": "Visit Date"},
+    {"id": "t", "type": "users", "label": "Technician(s)"},
+    {"id": "q", "type": "radio", "label": "Confirm Tip", "options": ["Yes"]},
+]
+
+
+class TipConfirmParseTests(SimpleTestCase):
+    def test_yes_like_values(self):
+        from hub.services.tip_confirm import is_confirmed_value
+
+        for val in ("Yes", "yes", "true", "Confirmed", True, "1"):
+            self.assertTrue(is_confirmed_value(val), val)
+        for val in ("", None, "No", False, "pending"):
+            self.assertFalse(is_confirmed_value(val), val)
+
+    def test_amount_format(self):
+        from hub.services.tip_confirm import format_tip_amount
+
+        self.assertEqual(format_tip_amount("25"), "25")
+        self.assertEqual(format_tip_amount("$25.00"), "25")
+        self.assertEqual(format_tip_amount("12.5"), "12.50")
+
+
+class TipConfirmAutomationTests(TestCase):
+    def setUp(self):
+        from hub.models import HubForm, HubUser
+
+        self.form = HubForm.objects.create(
+            name="New Tips",
+            slug="new-tips",
+            fields=TIPS_FIELDS,
+        )
+        self.tech1 = HubUser.objects.create(
+            name="Alex Cleaner",
+            phone="+15551111",
+            ghl_id="ghl_1",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.tech2 = HubUser.objects.create(
+            name="Pat Lead",
+            phone="+15552222",
+            ghl_id="ghl_2",
+            role=HubUser.Role.EMPLOYEE,
+        )
+
+    def _answers(self, confirm="", extra=None):
+        data = {
+            "c": "Jane Client",
+            "a": 25,
+            "m": "Cash",
+            "p": "2026-08-20",
+            "v": "2026-08-19",
+            "t": [str(self.tech1.id), str(self.tech2.id)],
+            "q": confirm,
+        }
+        if extra:
+            data.update(extra)
+        return data
+
+    def test_unconfirmed_does_not_notify_or_sms(self):
+        from unittest.mock import patch
+
+        from hub.models import HubFormSubmission, HubNotification, HubTipConfirmLog
+        from hub.services.tip_confirm import maybe_run_tip_confirm
+
+        sub = HubFormSubmission.objects.create(
+            form=self.form, answers=self._answers("")
+        )
+        with patch("hub.services.tip_confirm.send_conversation_sms") as sms:
+            ran = maybe_run_tip_confirm(sub)
+        self.assertFalse(ran)
+        sms.assert_not_called()
+        self.assertEqual(HubNotification.objects.count(), 0)
+        self.assertFalse(HubTipConfirmLog.objects.filter(submission=sub).exists())
+
+    def test_confirmed_notifies_and_sms_once_per_cleaner(self):
+        from unittest.mock import patch
+
+        from hub.models import HubFormSubmission, HubNotification, HubTipConfirmLog
+        from hub.services.tip_confirm import maybe_run_tip_confirm
+
+        sub = HubFormSubmission.objects.create(
+            form=self.form, answers=self._answers("Yes")
+        )
+        with patch(
+            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+        ) as sms:
+            self.assertTrue(maybe_run_tip_confirm(sub))
+            self.assertFalse(maybe_run_tip_confirm(sub))
+            sms_count = sms.call_count
+            maybe_run_tip_confirm(sub)
+            self.assertEqual(sms.call_count, sms_count)
+
+        self.assertEqual(sms_count, 2)
+        bodies = [c.args[1] for c in sms.call_args_list]
+        self.assertTrue(any("Alex" in b and "$25" in b and "Jane Client" in b for b in bodies))
+        self.assertTrue(any("Pat" in b for b in bodies))
+
+        qs = HubNotification.objects.filter(type="tip_confirmed")
+        self.assertEqual(qs.count(), 2)
+        self.assertEqual(
+            set(qs.values_list("recipient_id", flat=True)),
+            {self.tech1.id, self.tech2.id},
+        )
+        n = qs.filter(recipient=self.tech1).get()
+        self.assertEqual(n.title, "New Tip! 🎉")
+        self.assertEqual(n.body, "You received a $25 tip from Jane Client.")
+        self.assertEqual(n.link, "/admin/data")
+        self.assertTrue(HubTipConfirmLog.objects.filter(submission=sub).exists())
+
+    def test_create_then_confirm_via_api(self):
+        from unittest.mock import patch
+
+        from rest_framework.test import APIClient
+
+        from hub.models import HubNotification, HubTipConfirmLog, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        admin = HubUser.objects.create(
+            name="Admin",
+            email="admin-tips@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        anon = APIClient()
+        with patch(
+            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+        ) as sms:
+            created = anon.post(
+                "/api/submissions/",
+                {"formId": str(self.form.id), "answers": self._answers("")},
+                format="json",
+            )
+            self.assertEqual(created.status_code, 201)
+            sid = created.data["id"]
+            self.assertEqual(sms.call_count, 0)
+            self.assertEqual(HubNotification.objects.count(), 0)
+
+            authed = APIClient()
+            authed.credentials(
+                HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(admin)['access']}"
+            )
+            patched = authed.patch(
+                f"/api/submissions/{sid}/",
+                {"answers": self._answers("Yes")},
+                format="json",
+            )
+            self.assertEqual(patched.status_code, 200)
+            self.assertEqual(sms.call_count, 2)
+
+            again = authed.patch(
+                f"/api/submissions/{sid}/",
+                {"answers": self._answers("Yes")},
+                format="json",
+            )
+            self.assertEqual(again.status_code, 200)
+            self.assertEqual(sms.call_count, 2)
+
+        self.assertEqual(HubNotification.objects.filter(type="tip_confirmed").count(), 2)
+        self.assertTrue(HubTipConfirmLog.objects.filter(submission_id=sid).exists())
+
+    def test_name_fallback_slug(self):
+        from unittest.mock import patch
+
+        from hub.models import HubForm, HubFormSubmission, HubNotification
+        from hub.services.tip_confirm import maybe_run_tip_confirm
+
+        form = HubForm.objects.create(
+            name="New Tips",
+            slug="tips-intake",
+            fields=TIPS_FIELDS,
+        )
+        sub = HubFormSubmission.objects.create(
+            form=form, answers=self._answers("Yes")
+        )
+        with patch(
+            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+        ):
+            self.assertTrue(maybe_run_tip_confirm(sub))
+        self.assertEqual(HubNotification.objects.filter(type="tip_confirmed").count(), 2)
+
+
 

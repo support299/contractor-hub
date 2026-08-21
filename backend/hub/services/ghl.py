@@ -214,6 +214,62 @@ def set_login_otp(contact_id: str, otp: str, location_id: str | None = None) -> 
         return False
 
 
+def send_conversation_sms(hub_user: HubUser, message: str) -> bool:
+    """Send an SMS via GHL Conversations. Returns True on HTTP 200/201."""
+    text = (message or "").strip()
+    if not text:
+        logger.warning("GHL SMS skip: empty message for user %s", hub_user.id)
+        return False
+
+    contact_id = (hub_user.ghl_id or "").strip() or None
+    phone = (hub_user.phone or "").strip()
+    if not contact_id and not phone:
+        logger.warning(
+            "GHL SMS skip: user %s has no phone or ghl_id", hub_user.id
+        )
+        return False
+
+    try:
+        if not contact_id:
+            contact_id = upsert_contact_by_phone(
+                phone,
+                email=(hub_user.email or "").strip(),
+                name=(hub_user.name or "").strip(),
+            )
+            if contact_id and hub_user.ghl_id != contact_id:
+                hub_user.ghl_id = contact_id
+                hub_user.save(update_fields=["ghl_id", "updated_at"])
+        if not contact_id:
+            logger.error("GHL SMS: no contact id for user %s", hub_user.id)
+            return False
+
+        headers = _headers()
+        headers["Version"] = getattr(
+            settings, "GHL_CONVERSATIONS_API_VERSION", "2021-04-15"
+        )
+        resp = requests.post(
+            f"{_base_url()}/conversations/messages",
+            json={"type": "SMS", "contactId": contact_id, "message": text},
+            headers=headers,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            return True
+        logger.error(
+            "GHL Conversations SMS failed for user %s: %s %s",
+            hub_user.id,
+            resp.status_code,
+            resp.text[:500],
+        )
+        return False
+    except GHLConfigError:
+        logger.exception("GHL SMS config error for user %s", hub_user.id)
+        return False
+    except requests.RequestException as exc:
+        logger.error("GHL SMS request error for user %s: %s", hub_user.id, exc)
+        return False
+
+
 def push_otp_to_ghl(hub_user: HubUser, otp: str) -> str | None:
     """
     Upsert contact for hub_user and write Login Otp.

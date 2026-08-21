@@ -428,6 +428,16 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
             from .services.leave_notify import notify_leave_submitted
 
             notify_leave_submitted(submission)
+        from .services.tip_confirm import maybe_run_tip_confirm
+
+        maybe_run_tip_confirm(submission)
+        return submission
+
+    def perform_update(self, serializer):
+        submission = serializer.save()
+        from .services.tip_confirm import maybe_run_tip_confirm
+
+        maybe_run_tip_confirm(submission)
         return submission
 
     @action(detail=False, methods=["get"], url_path="by-form/(?P<form_id>[^/.]+)")

@@ -6,6 +6,7 @@ from .models import (
     HubForm,
     HubFormSubmission,
     HubLeaveApproval,
+    HubTipConfirmLog,
     HubNotification,
     HubResourceFolder,
     HubTrainingMaterial,
@@ -37,6 +38,11 @@ class HubFormSubmissionAdmin(admin.ModelAdmin):
     list_display = ("id", "form", "created_at")
     list_filter = ("form",)
     search_fields = ("id",)
+
+
+@admin.register(HubTipConfirmLog)
+class HubTipConfirmLogAdmin(admin.ModelAdmin):
+    list_display = ("submission", "ran_at")
 
 
 @admin.register(HubLeaveApproval)
