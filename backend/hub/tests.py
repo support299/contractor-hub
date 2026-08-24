@@ -749,4 +749,76 @@ class SyncEmployeePhonesFromGhlTests(TestCase):
         search.assert_called_once_with("alex@example.com")
 
 
+class GhlEmailLoginTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+
+        self.client = APIClient()
+        self.staff = HubUser.objects.create(
+            name="Serina Peluso",
+            email="serina@test.local",
+            role=HubUser.Role.EMPLOYEE,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.admin = HubUser.objects.create(
+            name="Hub Admin",
+            email="admin@test.local",
+            role=HubUser.Role.ADMIN,
+            status=HubUser.Status.ACTIVE,
+        )
+        HubUser.objects.create(
+            name="Inactive",
+            email="gone@test.local",
+            role=HubUser.Role.EMPLOYEE,
+            status=HubUser.Status.INACTIVE,
+        )
+
+    def test_logs_in_staff_and_admin_by_email(self):
+        staff = self.client.post(
+            "/api/auth/ghl-email-login/",
+            {"email": "Serina@test.local"},
+            format="json",
+        )
+        self.assertEqual(staff.status_code, 200)
+        self.assertIn("access", staff.data)
+        self.assertEqual(staff.data["user"]["email"], "serina@test.local")
+        self.assertEqual(staff.data["user"]["role"], "employee")
+
+        admin = self.client.post(
+            "/api/auth/ghl-email-login/",
+            {"email": "admin@test.local"},
+            format="json",
+        )
+        self.assertEqual(admin.status_code, 200)
+        self.assertEqual(admin.data["user"]["role"], "admin")
+
+    def test_unknown_or_inactive_falls_back(self):
+        missing = self.client.post(
+            "/api/auth/ghl-email-login/",
+            {"email": "nobody@test.local"},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 404)
+        inactive = self.client.post(
+            "/api/auth/ghl-email-login/",
+            {"email": "gone@test.local"},
+            format="json",
+        )
+        self.assertEqual(inactive.status_code, 404)
+
+    def test_disabled_by_setting(self):
+        from django.test import override_settings
+
+        with override_settings(HUB_GHL_EMAIL_LOGIN=False):
+            res = self.client.post(
+                "/api/auth/ghl-email-login/",
+                {"email": "serina@test.local"},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.data["code"], "disabled")
+
+
 

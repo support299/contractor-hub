@@ -3,6 +3,7 @@ import re
 import uuid
 from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
@@ -28,6 +29,7 @@ from .models import (
 from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
 from .serializers import (
     FileUploadSerializer,
+    GhlEmailLoginSerializer,
     HubAlertSerializer,
     HubDocumentSerializer,
     HubFormSerializer,
@@ -46,6 +48,7 @@ from .serializers import (
 )
 from .services.auth import (
     clear_otp,
+    find_hub_user_by_email,
     find_hub_user_by_phone,
     find_hub_user_for_login,
     generate_otp_code,
@@ -211,6 +214,31 @@ class PasswordLoginView(APIView):
         )
 
 
+class GhlEmailLoginView(APIView):
+    """GHL custom-menu SSO: email of an active hub user → JWT (no password)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not getattr(settings, "HUB_GHL_EMAIL_LOGIN", True):
+            return Response(
+                {
+                    "detail": "Email auto-login is disabled.",
+                    "code": "disabled",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ser = GhlEmailLoginSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        hub_user = find_hub_user_by_email(ser.validated_data["email"])
+        if not hub_user:
+            return Response(
+                {"detail": "No active staff account found for that email."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(tokens_for_hub_user(hub_user))
+
+
 class SetPasswordView(APIView):
     """First-time password for existing HubUser by email (no public signup)."""
 
@@ -218,8 +246,6 @@ class SetPasswordView(APIView):
 
     def post(self, request):
         from django.core.exceptions import ValidationError as DjangoValidationError
-
-        from .services.auth import find_hub_user_by_email
 
         ser = SetPasswordSerializer(data=request.data)
         ser.is_valid(raise_exception=True)

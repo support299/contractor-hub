@@ -202,8 +202,18 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
 }
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
 # Open hub without JWT (legacy). Production default: require authentication.
-HUB_OPEN_ACCESS = os.getenv("HUB_OPEN_ACCESS", "False").lower() in ("1", "true", "yes")
+HUB_OPEN_ACCESS = _env_flag("HUB_OPEN_ACCESS", False)
+
+# GHL custom-menu SSO: POST email → JWT. Default on; set False to force password/OTP only.
+HUB_GHL_EMAIL_LOGIN = _env_flag("HUB_GHL_EMAIL_LOGIN", True)
 
 # GoHighLevel (Private Integration) — phone OTP SMS via workflow on Login Otp field
 GHL_PRIVATE_TOKEN = os.getenv("GHL_PRIVATE_TOKEN", "")

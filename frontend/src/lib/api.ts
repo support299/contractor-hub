@@ -172,4 +172,13 @@ export async function verifyOtp(phone: string, otp: string) {
   return data;
 }
 
+export async function loginByEmail(email: string) {
+  const data = await api<{ access: string; refresh: string; user: AuthUser }>(
+    "/auth/ghl-email-login/",
+    { method: "POST", body: { email }, auth: false },
+  );
+  setAuth(data.access, data.refresh, data.user);
+  return data;
+}
+
 export { API_BASE };

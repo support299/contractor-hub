@@ -469,6 +469,10 @@ class PasswordLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class GhlEmailLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
 class SetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
