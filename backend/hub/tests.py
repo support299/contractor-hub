@@ -689,4 +689,64 @@ class TipConfirmAutomationTests(TestCase):
         self.assertEqual(HubNotification.objects.filter(type="tip_confirmed").count(), 2)
 
 
+class PhoneFromContactTests(SimpleTestCase):
+    def test_primary_phone(self):
+        from hub.services.ghl import phone_from_contact
+
+        self.assertEqual(phone_from_contact({"phone": " +15551212 "}), "+15551212")
+
+    def test_additional_phones_fallback(self):
+        from hub.services.ghl import phone_from_contact
+
+        self.assertEqual(
+            phone_from_contact(
+                {"phone": "", "additionalPhones": [{"phone": "+15559999"}]}
+            ),
+            "+15559999",
+        )
+
+
+class SyncEmployeePhonesFromGhlTests(TestCase):
+    def setUp(self):
+        from hub.models import HubUser
+
+        self.employee = HubUser.objects.create(
+            name="Alex Cleaner",
+            email="alex@example.com",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.no_email = HubUser.objects.create(
+            name="No Mail",
+            email="",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.contractor = HubUser.objects.create(
+            name="Pat Contractor",
+            email="pat@example.com",
+            role=HubUser.Role.CONTRACTOR,
+        )
+
+    def test_skips_no_email_and_non_employees(self):
+        from io import StringIO
+        from unittest.mock import patch
+
+        from django.core.management import call_command
+
+        with patch(
+            "hub.management.commands.sync_employee_phones_from_ghl.search_contact_by_email",
+            return_value={"id": "c1", "email": "alex@example.com", "phone": "+15551111"},
+        ) as search:
+            out = StringIO()
+            call_command("sync_employee_phones_from_ghl", stdout=out)
+
+        self.employee.refresh_from_db()
+        self.no_email.refresh_from_db()
+        self.contractor.refresh_from_db()
+        self.assertEqual(self.employee.phone, "+15551111")
+        self.assertEqual(self.employee.ghl_id, "c1")
+        self.assertEqual(self.no_email.phone, "")
+        self.assertEqual(self.contractor.phone, "")
+        search.assert_called_once_with("alex@example.com")
+
+
 
