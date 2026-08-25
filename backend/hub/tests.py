@@ -821,4 +821,145 @@ class GhlEmailLoginTests(TestCase):
         self.assertEqual(res.data["code"], "disabled")
 
 
+class StaffPermissionTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubForm, HubFormSubmission, HubLeaveApproval, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.HubForm = HubForm
+        self.HubFormSubmission = HubFormSubmission
+        self.HubLeaveApproval = HubLeaveApproval
+
+        self.admin = HubUser.objects.create(
+            name="Ada Admin",
+            email="ada@test.local",
+            role=HubUser.Role.ADMIN,
+            regular_rate=Decimal("50"),
+        )
+        self.employee = HubUser.objects.create(
+            name="Eli Employee",
+            email="eli@test.local",
+            phone="5551111",
+            role=HubUser.Role.EMPLOYEE,
+            regular_rate=Decimal("22"),
+        )
+        self.contractor = HubUser.objects.create(
+            name="Cara Contractor",
+            email="cara@test.local",
+            role=HubUser.Role.CONTRACTOR,
+            regular_rate=Decimal("30"),
+        )
+        self.payroll = HubForm.objects.create(
+            name="Payroll",
+            slug="new-payroll-records",
+            fields=[{"id": "u", "type": "users", "label": "Staff"}],
+        )
+        self.leave = HubForm.objects.create(
+            name="Time off",
+            slug="request-time-off",
+            fields=LEAVE_FIELDS,
+        )
+        self.mine = HubFormSubmission.objects.create(
+            form=self.payroll,
+            answers={"u": ["Eli Employee"]},
+        )
+        self.theirs = HubFormSubmission.objects.create(
+            form=self.payroll,
+            answers={"u": ["Cara Contractor"]},
+        )
+        other_leave = HubFormSubmission.objects.create(
+            form=self.leave,
+            answers={"u": ["Cara Contractor"], "s": "2026-09-01", "e": "2026-09-02", "t": "Vacation"},
+        )
+        HubLeaveApproval.objects.create(
+            submission=other_leave,
+            status=HubLeaveApproval.Status.PENDING,
+        )
+
+        self.emp_client = APIClient()
+        self.emp_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+        self.con_client = APIClient()
+        self.con_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.contractor)['access']}"
+        )
+        self.admin_client = APIClient()
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+
+    def test_staff_cannot_create_or_delete_payroll(self):
+        created = self.emp_client.post(
+            "/api/submissions/",
+            {"formId": str(self.payroll.id), "answers": {"u": ["Eli Employee"]}},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 403)
+
+        deleted = self.emp_client.delete(f"/api/submissions/{self.mine.id}/")
+        self.assertEqual(deleted.status_code, 403)
+
+        patched = self.emp_client.patch(
+            f"/api/submissions/{self.mine.id}/",
+            {"answers": {"u": ["Eli Employee"], "x": 1}},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 403)
+
+    def test_contractor_cannot_create_payroll(self):
+        created = self.con_client.post(
+            "/api/submissions/",
+            {"formId": str(self.payroll.id), "answers": {"u": ["Cara Contractor"]}},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 403)
+
+    def test_staff_payroll_list_is_own_records_only(self):
+        res = self.emp_client.get(f"/api/submissions/?form={self.payroll.id}")
+        self.assertEqual(res.status_code, 200)
+        ids = {row["id"] for row in res.data}
+        self.assertIn(str(self.mine.id), ids)
+        self.assertNotIn(str(self.theirs.id), ids)
+
+        admin_res = self.admin_client.get(f"/api/submissions/?form={self.payroll.id}")
+        admin_ids = {row["id"] for row in admin_res.data}
+        self.assertEqual(admin_ids, {str(self.mine.id), str(self.theirs.id)})
+
+    def test_staff_can_request_time_off_for_self(self):
+        res = self.emp_client.post(
+            "/api/submissions/",
+            {
+                "formId": str(self.leave.id),
+                "answers": {
+                    "u": ["Eli Employee"],
+                    "s": "2026-10-01",
+                    "e": "2026-10-02",
+                    "t": "Vacation",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+
+    def test_staff_user_list_hides_others_pay_and_contact(self):
+        res = self.emp_client.get("/api/users/")
+        self.assertEqual(res.status_code, 200)
+        by_name = {row["name"]: row for row in res.data}
+        self.assertEqual(by_name["Eli Employee"]["regularRate"], "22.00")
+        self.assertNotIn("regularRate", by_name["Cara Contractor"])
+        self.assertNotIn("email", by_name["Cara Contractor"])
+        self.assertEqual(by_name["Eli Employee"]["email"], "eli@test.local")
+
+    def test_admin_can_create_payroll(self):
+        res = self.admin_client.post(
+            "/api/submissions/",
+            {"formId": str(self.payroll.id), "answers": {"u": ["Eli Employee"]}},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+
+
 

@@ -165,7 +165,8 @@ function valueAsArray(v: unknown): string[] {
 }
 
 export default function CalendarPage() {
-  const canApprove = isAdminSession(useSession());
+  const session = useSession();
+  const canApprove = isAdminSession(session);
   const forms = useForms();
   const leaveForm = useMemo(
     () => forms.find((f) => f.slug === LEAVE_FORM_SLUG),
@@ -270,6 +271,7 @@ export default function CalendarPage() {
 
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
+      if (!canApprove && session?.name && !r.staff.includes(session.name)) return false;
       if (filterStatus !== "all" && r.status !== filterStatus) return false;
       if (filterStaff !== "all" && !r.staff.includes(filterStaff)) return false;
       if (filterType !== "all" && r.leaveType !== filterType) return false;
@@ -285,7 +287,7 @@ export default function CalendarPage() {
       }
       return true;
     });
-  }, [requests, filterStatus, filterStaff, filterType, filterFrom, filterTo]);
+  }, [requests, filterStatus, filterStaff, filterType, filterFrom, filterTo, canApprove, session?.name]);
 
   // approved leaves indexed by day for calendar
   const leavesByDay = useMemo(() => {
@@ -394,7 +396,7 @@ export default function CalendarPage() {
             </h1>
             <Button className="h-8 gap-2 ml-2" onClick={() => setSubmitOpen(true)}>
               <FilePlus className="h-4 w-4" />
-              Submit Record
+              {canApprove ? "Submit Record" : "Request time off"}
             </Button>
           </div>
           <div className="flex items-center gap-1">
@@ -526,6 +528,7 @@ export default function CalendarPage() {
               </Select>
             </div>
           </div>
+          {canApprove ? (
           <div>
             <Label className="text-[11px] text-muted-foreground">Staff</Label>
             <Select value={filterStaff} onValueChange={setFilterStaff}>
@@ -538,6 +541,7 @@ export default function CalendarPage() {
               </SelectContent>
             </Select>
           </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-[11px] text-muted-foreground">From</Label>
@@ -663,10 +667,15 @@ export default function CalendarPage() {
       </div>
 
       <FormSubmitDialog
-        slug={ABSENCE_FORM_SLUG}
+        slug={canApprove ? ABSENCE_FORM_SLUG : LEAVE_FORM_SLUG}
         open={submitOpen}
         onOpenChange={setSubmitOpen}
-        title="New Absence"
+        title={canApprove ? "New Absence" : "Request time off"}
+        onSubmitted={() => {
+          if (leaveForm) {
+            fetchSubmissions(leaveForm.id).then(setSubmissions);
+          }
+        }}
       />
 
       {/* Delete confirm / detail dialog */}
@@ -713,12 +722,14 @@ export default function CalendarPage() {
             <Button variant="outline" onClick={() => setConfirmDelete(null)}>
               Close
             </Button>
+            {canApprove ? (
             <Button
               variant="destructive"
               onClick={() => confirmDelete && handleDelete(confirmDelete)}
             >
               <Trash2 className="h-4 w-4 mr-1" /> Delete entry
             </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

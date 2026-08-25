@@ -37,8 +37,8 @@ export default function App() {
               <Route path="payrolls" element={<PayrollsPage />} />
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="resources" element={<ResourcesPage />} />
-              <Route path="data" element={<DataPage />} />
               <Route element={<RequireAdmin />}>
+                <Route path="data" element={<DataPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="forms" element={<FormsPage />} />
                 <Route path="forms/:formId/submissions" element={<FormSubmissionsPage />} />

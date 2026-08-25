@@ -27,6 +27,11 @@ from .models import (
     HubUser,
 )
 from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
+from .staff_access import (
+    STAFF_CREATE_BLOCKED_SLUGS,
+    filter_leave_approvals_for_staff,
+    filter_submissions_for_staff,
+)
 from .serializers import (
     FileUploadSerializer,
     GhlEmailLoginSerializer,
@@ -444,7 +449,30 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [AllowAny()]
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsAdminRole()]
         return [HubAccess()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if user_is_hub_admin(self.request.user):
+            return qs
+        profile = getattr(self.request.user, "hub_profile", None)
+        if not profile:
+            return qs.none()
+        return filter_submissions_for_staff(qs, profile)
+
+    def create(self, request, *args, **kwargs):
+        form_id = request.data.get("formId") or request.data.get("form_id")
+        if form_id:
+            form = HubForm.objects.filter(pk=form_id).first()
+            if form and form.slug in STAFF_CREATE_BLOCKED_SLUGS:
+                if not user_is_hub_admin(request.user):
+                    return Response(
+                        {"detail": "Only admins can add these records."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         submission = serializer.save()
@@ -526,6 +554,15 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve"):
             return [HubAccess()]
         return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if user_is_hub_admin(self.request.user):
+            return qs
+        profile = getattr(self.request.user, "hub_profile", None)
+        if not profile:
+            return qs.none()
+        return filter_leave_approvals_for_staff(qs, profile)
 
     def perform_update(self, serializer):
         previous_status = serializer.instance.status

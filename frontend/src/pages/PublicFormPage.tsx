@@ -194,9 +194,11 @@ export interface FieldRendererProps {
   users: HubUser[];
   /** When set to payroll records slug, Users fields become single-select. */
   formSlug?: string;
+  /** When set, Users fields are locked to this person (staff self-service). */
+  staffNameLock?: string;
 }
 
-export function FieldRenderer({ field, value, onChange, users, formSlug }: FieldRendererProps) {
+export function FieldRenderer({ field, value, onChange, users, formSlug, staffNameLock }: FieldRendererProps) {
   if (field.type === "image") {
     if (!field.imageUrl) return null;
     return (
@@ -382,6 +384,14 @@ export function FieldRenderer({ field, value, onChange, users, formSlug }: Field
         </div>
       );
     case "users": {
+      if (staffNameLock) {
+        return (
+          <div className="space-y-1.5">
+            {label}
+            <Input value={staffNameLock} disabled />
+          </div>
+        );
+      }
       const activeUsers = users.filter((u) => u.status === "active");
       if (isPayrollRecordsSlug(formSlug)) {
         const current = singleUserName(value);

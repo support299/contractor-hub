@@ -603,7 +603,8 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            {/* Leaderboard */}
+            {/* Leaderboard (admin only — other people's pay should not be visible to staff) */}
+            {admin ? (
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
                 <Crown className="h-4 w-4 text-amber-500" />
@@ -637,6 +638,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+            ) : null}
           </div>
         </div>
       </div>
