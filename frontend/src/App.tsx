@@ -4,6 +4,7 @@ import { GhlEmailAutoLogin } from "@/components/GhlEmailAutoLogin";
 import { RequireAdmin, RequireAuth } from "@/components/RequireAuth";
 import AdminLayout from "@/pages/AdminLayout";
 import DashboardPage from "@/pages/DashboardPage";
+import ScoreboardPage from "@/pages/ScoreboardPage";
 import PayrollsPage from "@/pages/PayrollsPage";
 import CalendarPage from "@/pages/CalendarPage";
 import ResourcesPage from "@/pages/ResourcesPage";
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="calendar" element={<CalendarPage />} />
               <Route path="resources" element={<ResourcesPage />} />
               <Route element={<RequireAdmin />}>
+                <Route path="scoreboard" element={<ScoreboardPage />} />
                 <Route path="data" element={<DataPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="forms" element={<FormsPage />} />

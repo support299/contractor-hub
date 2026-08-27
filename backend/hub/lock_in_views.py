@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import HubUser, HubVisit, LockInBonus, PendingLockIn
-from .permissions import IsAdminRole
+from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
 from .serializers import HubVisitSerializer, LockInBonusSerializer, PendingLockInSerializer
 from .services import lock_in as svc
 
@@ -159,6 +159,17 @@ class PendingLockInViewSet(viewsets.ReadOnlyModelViewSet):
 class LockInBonusViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LockInBonus.objects.select_related("technician", "pending").all()
     serializer_class = LockInBonusSerializer
-    permission_classes = [IsAdminRole]
+    permission_classes = [HubAccess]
+    pagination_class = None
     filterset_fields = ["status", "bonus_type", "technician"]
     search_fields = ["pending__client_name", "technician__name"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user_is_hub_admin(user):
+            return qs
+        profile = getattr(user, "hub_profile", None)
+        if profile is None:
+            return qs.none()
+        return qs.filter(technician_id=profile.id)
