@@ -125,8 +125,19 @@ class HubUserSerializer(serializers.ModelSerializer):
             from .permissions import user_is_hub_admin
 
             if not user_is_hub_admin(request.user):
-                for key in self._ADMIN_ONLY_FIELDS:
-                    data.pop(key, None)
+                profile = getattr(request.user, "hub_profile", None)
+                is_self = bool(profile and str(profile.id) == str(instance.id))
+                # Integration IDs never leave the admin API.
+                data.pop("jobberId", None)
+                data.pop("ghlId", None)
+                if is_self:
+                    # Own pay rates are needed to read personal payroll totals.
+                    data.pop("suppliesDeduction", None)
+                else:
+                    for key in self._ADMIN_ONLY_FIELDS:
+                        data.pop(key, None)
+                    for key in ("email", "phone", "hireDate", "availableVacationDays"):
+                        data.pop(key, None)
         return data
 
 
@@ -467,6 +478,10 @@ class VerifyOtpSerializer(serializers.Serializer):
 class PasswordLoginSerializer(serializers.Serializer):
     username = serializers.CharField(help_text="Email or username")
     password = serializers.CharField(write_only=True)
+
+
+class GhlEmailLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
 
 
 class SetPasswordSerializer(serializers.Serializer):

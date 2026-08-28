@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -11,18 +11,52 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const session = useSession();
   const admin = isAdminSession(session);
+  const [searchParams] = useSearchParams();
+  const tv =
+    searchParams.get("tv") === "1" && location.pathname.startsWith("/admin/scoreboard");
+  const roleLabel = (session?.role || "staff").toUpperCase();
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
+    ...(admin ? [{ to: "/admin/scoreboard", label: "Scoreboard" }] : []),
     { to: "/admin/payrolls", label: "Payrolls" },
     { to: "/admin/calendar", label: "Calendar" },
     { to: "/admin/resources", label: "Resources" },
-    { to: "/admin/data", label: "Records" },
+    ...(admin ? [{ to: "/admin/data", label: "Records" }] : []),
   ];
 
   const logout = () => {
     clearAuth();
     navigate("/login", { replace: true });
   };
+
+  const exitTvView = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("tv");
+    const search = next.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" });
+  };
+
+  if (tv) {
+    return (
+      <div className="min-h-screen bg-background relative">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="absolute top-3 right-3 z-20 bg-card/90"
+          onClick={exitTvView}
+        >
+          Exit TV view
+        </Button>
+        <main className="min-h-screen p-3 pt-12">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -32,7 +66,7 @@ export default function AdminLayout() {
           <div className="flex items-center gap-3 min-w-0">
             <Logo className="h-10 w-auto shrink-0" />
             <span className="px-2 py-0.5 rounded-md bg-foreground text-background text-xs font-semibold">
-              {admin ? "ADMIN" : "STAFF"}
+              {roleLabel}
             </span>
             {session?.name ? (
               <span className="text-sm text-muted-foreground truncate hidden sm:inline">

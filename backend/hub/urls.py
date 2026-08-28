@@ -36,6 +36,7 @@ urlpatterns = [
     path("auth/request-otp/", views.RequestOtpView.as_view(), name="request-otp"),
     path("auth/verify-otp/", views.VerifyOtpView.as_view(), name="verify-otp"),
     path("auth/login/", views.PasswordLoginView.as_view(), name="password-login"),
+    path("auth/ghl-email-login/", views.GhlEmailLoginView.as_view(), name="ghl-email-login"),
     path("auth/set-password/", views.SetPasswordView.as_view(), name="set-password"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/me/", views.MeView.as_view(), name="me"),

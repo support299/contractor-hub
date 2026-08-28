@@ -169,6 +169,9 @@ def create_pending_stage1(payload: dict) -> tuple[PendingLockIn, bool]:
                 position_snapshot=position or (tech.position or ""),
                 in_process_date=now,
             )
+    from hub.services.lock_in_notify import notify_lock_in_potential
+
+    notify_lock_in_potential(pending)
     return pending, True
 
 
@@ -199,6 +202,7 @@ def eligibility_cutoff(pending: PendingLockIn):
 def confirm_pending(pending: PendingLockIn, *, visit_id: str, visit_at) -> PendingLockIn:
     visit_at = parse_ts(visit_at) or timezone.now()
     now = timezone.now()
+    newly_confirmed = False
     with transaction.atomic():
         pending = PendingLockIn.objects.select_for_update().get(pk=pending.pk)
         if pending.locked_in or pending.status != PendingLockIn.Status.IN_PROCESS:
@@ -223,6 +227,11 @@ def confirm_pending(pending: PendingLockIn, *, visit_id: str, visit_at) -> Pendi
             bonus_confirmed=True,
             confirmed_date=now,
         )
+        newly_confirmed = True
+    if newly_confirmed:
+        from hub.services.lock_in_notify import notify_lock_in_confirmed
+
+        notify_lock_in_confirmed(pending)
     return pending
 
 

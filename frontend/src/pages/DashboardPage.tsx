@@ -8,9 +8,10 @@ import {
   ClipboardCheck,
   Crown,
   CalendarIcon,
+  Lock,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import { useUsers, useSession, type HubUser } from "@/lib/hub-store";
+import { useUsers, useSession } from "@/lib/hub-store";
 import { isAdminSession } from "@/lib/api";
 import {
   Select,
@@ -24,217 +25,26 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
-
-const PAYROLL_SLUG = "new-payroll-records";
-const BONUS_SLUG = "bonus-submissions";
-const REVIEW_SLUGS = ["review-your-recent-experience", "how-are-we-doing"];
-const EFFICIENCY_SLUG = "new-efficiency";
-
-type FeedbackItem = {
-  id: string;
-  formName: string;
-  clientName: string;
-  area: string;
-  rating: number;
-  comment: string;
-  createdAt: string;
-};
-
-function findFieldIdsByType(form: HubForm | null, type: string): string[] {
-  if (!form) return [];
-  return form.fields.filter((f) => f.type === type).map((f) => f.id);
-}
-
-function findFieldIdByLabelContains(form: HubForm | null, needle: string): string | null {
-  if (!form) return null;
-  const n = needle.toLowerCase();
-  return form.fields.find((f) => (f.label ?? "").toLowerCase().includes(n))?.id ?? null;
-}
-
-function submissionMatchesUser(
-  sub: FormSubmission,
-  form: HubForm,
-  userName: string,
-): boolean {
-  const techId = findFieldIdByType(form, "users");
-  if (!techId) return false;
-  const v = sub.answers[techId];
-  const names = Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
-  return names.includes(userName);
-}
-
-function inRange(sub: FormSubmission, range: DateRange | undefined): boolean {
-  const from = range?.from ? new Date(range.from).getTime() : -Infinity;
-  const toDate = range?.to ?? range?.from;
-  const to = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)).getTime() : Infinity;
-  const t = new Date(sub.createdAt).getTime();
-  return t >= from && t <= to;
-}
-
-function avgStarRating(
-  user: HubUser | undefined,
-  reviewData: { form: HubForm; subs: FormSubmission[] }[],
-  range: DateRange | undefined,
-): { avg: number; count: number } {
-  if (!user) return { avg: 0, count: 0 };
-  let sum = 0;
-  let count = 0;
-  for (const { form, subs } of reviewData) {
-    const starIds = findFieldIdsByType(form, "star_rating");
-    if (!starIds.length) continue;
-    for (const sub of subs) {
-      if (!inRange(sub, range)) continue;
-      if (!submissionMatchesUser(sub, form, user.name)) continue;
-      for (const sid of starIds) {
-        const v = num(sub.answers[sid]);
-        if (v > 0) {
-          sum += v;
-          count += 1;
-        }
-      }
-    }
-  }
-  return { avg: count ? sum / count : 0, count };
-}
-
-function collectFeedback(
-  user: HubUser | undefined,
-  reviewData: { form: HubForm; subs: FormSubmission[] }[],
-  range: DateRange | undefined,
-): FeedbackItem[] {
-  if (!user) return [];
-  const items: FeedbackItem[] = [];
-  for (const { form, subs } of reviewData) {
-    const starIds = findFieldIdsByType(form, "star_rating");
-    const nameId =
-      findFieldIdByLabelContains(form, "your name") ??
-      findFieldIdByLabelContains(form, "name");
-    const areaId = findFieldIdByLabelContains(form, "area");
-    const commentId =
-      findFieldIdByLabelContains(form, "additional thoughts") ??
-      findFieldIdByLabelContains(form, "share") ??
-      form.fields.find((f) => f.type === "multi_line")?.id ??
-      null;
-    for (const sub of subs) {
-      if (!inRange(sub, range)) continue;
-      if (!submissionMatchesUser(sub, form, user.name)) continue;
-      const ratings = starIds.map((id) => num(sub.answers[id])).filter((n) => n > 0);
-      const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
-      items.push({
-        id: sub.id,
-        formName: form.name,
-        clientName: nameId ? String(sub.answers[nameId] ?? "Anonymous") : "Anonymous",
-        area: areaId ? String(sub.answers[areaId] ?? "") : "",
-        rating: avg,
-        comment: commentId ? String(sub.answers[commentId] ?? "") : "",
-        createdAt: sub.createdAt,
-      });
-    }
-  }
-  items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return items;
-}
-
-function computeBonuses(
-  user: HubUser | undefined,
-  submissions: FormSubmission[],
-  form: HubForm | null,
-  range: DateRange | undefined,
-): number {
-  if (!user || !form) return 0;
-  const techId = findFieldIdByType(form, "users");
-  const amountId = findFieldId(form, "Bonus Amount");
-  if (!techId || !amountId) return 0;
-  const from = range?.from ? new Date(range.from).getTime() : -Infinity;
-  const toDate = range?.to ?? range?.from;
-  const to = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)).getTime() : Infinity;
-  let total = 0;
-  for (const sub of submissions) {
-    const t = new Date(sub.createdAt).getTime();
-    if (t < from || t > to) continue;
-    const techVal = sub.answers[techId];
-    const techNames = Array.isArray(techVal) ? techVal.map(String) : techVal ? [String(techVal)] : [];
-    if (!techNames.includes(user.name)) continue;
-    total += num(sub.answers[amountId]);
-  }
-  return total;
-}
-
-function findFieldId(form: HubForm | null, label: string): string | null {
-  if (!form) return null;
-  const f = form.fields.find((x) => x.label?.trim().toLowerCase() === label.toLowerCase());
-  return f?.id ?? null;
-}
-
-function findFieldIdByType(form: HubForm | null, type: string): string | null {
-  if (!form) return null;
-  const f = form.fields.find((x) => x.type === type);
-  return f?.id ?? null;
-}
-
-function num(v: unknown): number {
-  if (v === null || v === undefined || v === "") return 0;
-  const n = typeof v === "number" ? v : parseFloat(String(v));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function computeEarnings(
-  user: HubUser | undefined,
-  submissions: FormSubmission[],
-  form: HubForm | null,
-  range: DateRange | undefined,
-): number {
-  if (!user || !form) return 0;
-  const techId = findFieldIdByType(form, "users");
-  const ids = {
-    reg: findFieldId(form, "Regular Hours"),
-    drive: findFieldId(form, "Drive Time Hours"),
-    fc: findFieldId(form, "FC Hours"),
-    tr: findFieldId(form, "TR Hours"),
-    stat: findFieldId(form, "Stat Holiday Pay"),
-    vac: findFieldId(form, "Vacation Pay Amount"),
-    tips: findFieldId(form, "Total Tips"),
-    gas: findFieldId(form, "Gas Reimbursement"),
-    other: findFieldId(form, "Other Pay"),
-    ded: findFieldId(form, "Deductions"),
-  };
-  const from = range?.from ? new Date(range.from).getTime() : -Infinity;
-  const toDate = range?.to ?? range?.from;
-  const to = toDate ? new Date(new Date(toDate).setHours(23, 59, 59, 999)).getTime() : Infinity;
-
-  let total = 0;
-  for (const sub of submissions) {
-    const t = new Date(sub.createdAt).getTime();
-    if (t < from || t > to) continue;
-    if (!techId) continue;
-    const techVal = sub.answers[techId];
-    const techNames = Array.isArray(techVal) ? techVal.map(String) : techVal ? [String(techVal)] : [];
-    if (!techNames.includes(user.name)) continue;
-    const a = sub.answers;
-    total += num(a[ids.reg ?? ""]) * (user.regularRate ?? 0);
-    total += num(a[ids.drive ?? ""]) * (user.driveTimeRate ?? 0);
-    total += num(a[ids.fc ?? ""]) * (user.fcRate ?? 0);
-    total += num(a[ids.tr ?? ""]) * (user.trRate ?? 0);
-    total += num(a[ids.stat ?? ""]);
-    total += num(a[ids.vac ?? ""]);
-    total += num(a[ids.tips ?? ""]);
-    total += num(a[ids.gas ?? ""]);
-    total += num(a[ids.other ?? ""]);
-    total -= num(a[ids.ded ?? ""]);
-  }
-  return total;
-}
-
-
-
-function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
+import {
+  fetchLockInBonuses,
+  isConfirmedLockIn,
+  lockInEventAt,
+  type LockInBonusRow,
+} from "@/lib/lock-in-store";
+import {
+  PAYROLL_SLUG,
+  BONUS_SLUG,
+  REVIEW_SLUGS,
+  EFFICIENCY_SLUG,
+  avgStarRating,
+  collectFeedback,
+  computeBonuses,
+  computeEarnings,
+  computeEfficiencyScore,
+  dateInRange,
+  formatMoney,
+  initialsOf,
+} from "@/lib/dashboard-metrics";
 
 export default function DashboardPage() {
   const users = useUsers();
@@ -274,6 +84,7 @@ export default function DashboardPage() {
   const [reviewData, setReviewData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
   const [efficiencyForm, setEfficiencyForm] = useState<HubForm | null>(null);
   const [efficiencySubs, setEfficiencySubs] = useState<FormSubmission[]>([]);
+  const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -287,17 +98,19 @@ export default function DashboardPage() {
       setPayrollForm(f);
       setBonusForm(b);
       setEfficiencyForm(e);
-      const [subs, bsubs, rsubs, esubs] = await Promise.all([
+      const [subs, bsubs, rsubs, esubs, bonuses] = await Promise.all([
         f ? fetchSubmissions(f.id) : Promise.resolve([]),
         b ? fetchSubmissions(b.id) : Promise.resolve([]),
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
         e ? fetchSubmissions(e.id) : Promise.resolve([]),
+        fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
       ]);
       if (!active) return;
       setPayrollSubs(subs);
       setBonusSubs(bsubs);
       setReviewData(reviewForms.map((form, i) => ({ form, subs: rsubs[i] ?? [] })));
       setEfficiencySubs(esubs);
+      setLockIns(bonuses);
     })();
     return () => {
       active = false;
@@ -308,19 +121,13 @@ export default function DashboardPage() {
     () => computeEarnings(selected, payrollSubs, payrollForm, range),
     [selected, payrollSubs, payrollForm, range],
   );
-  const totalEarningsLabel = `$${totalEarnings.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const totalEarningsLabel = formatMoney(totalEarnings);
 
   const totalBonuses = useMemo(
     () => computeBonuses(selected, bonusSubs, bonusForm, range),
     [selected, bonusSubs, bonusForm, range],
   );
-  const totalBonusesLabel = `$${totalBonuses.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const totalBonusesLabel = formatMoney(totalBonuses);
 
   const ratingStats = useMemo(
     () => avgStarRating(selected, reviewData, range),
@@ -338,19 +145,31 @@ export default function DashboardPage() {
     [selected, reviewData, range],
   );
 
-  const efficiency = useMemo(() => {
-    if (!selected || !efficiencyForm) return 100;
-    let count = 0;
-    for (const sub of efficiencySubs) {
-      if (!inRange(sub, range)) continue;
-      if (!submissionMatchesUser(sub, efficiencyForm, selected.name)) continue;
-      count += 1;
-    }
-    return Math.max(0, 100 - count * 5);
-  }, [selected, efficiencyForm, efficiencySubs, range]);
+  const efficiency = useMemo(
+    () => computeEfficiencyScore(selected, efficiencySubs, efficiencyForm, range),
+    [selected, efficiencyForm, efficiencySubs, range],
+  );
   const efficiencyLabel = `${efficiency}%`;
   const efficiencyBadge =
     efficiency === 100 ? "Perfect" : efficiency >= 80 ? "Above Avg" : "Needs Work";
+
+  const periodLockIns = useMemo(() => {
+    if (!selected) return [];
+    return lockIns.filter((row) => {
+      if (!isConfirmedLockIn(row)) return false;
+      if (row.technician !== selected.id) return false;
+      return dateInRange(lockInEventAt(row), range);
+    });
+  }, [lockIns, selected, range]);
+  const lockInAmount = periodLockIns.reduce((a, r) => a + r.amount, 0);
+
+  const shoutout = useMemo(() => {
+    return (
+      feedback.find((f) => f.rating >= 5 && f.comment.trim()) ??
+      feedback.find((f) => f.rating >= 5) ??
+      null
+    );
+  }, [feedback]);
 
   const leaderboard = useMemo(() => {
     return activeUsers
@@ -455,10 +274,10 @@ export default function DashboardPage() {
             icon={<Star className="h-4 w-4 text-amber-500" />}
           />
           <StatCard
-            label="Shifts Completed"
-            value="32"
-            sub="+4 from last month"
-            icon={<ThumbsUp className="h-4 w-4 text-muted-foreground" />}
+            label="Lock-ins"
+            value={String(periodLockIns.length)}
+            sub={periodLockIns.length ? formatMoney(lockInAmount) : "Confirmed in this period"}
+            icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
         </div>
 
@@ -466,35 +285,45 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left column */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Review shoutout */}
+            {shoutout ? (
             <div className="rounded-xl border bg-card p-5 shadow-sm relative overflow-hidden">
               <div className="flex items-center gap-2 mb-3">
                 <span className="inline-flex items-center rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-bold tracking-wide">
                   REVIEW SHOUTOUT
                 </span>
-                <span className="text-sm font-semibold">New 5-Star Highlight</span>
+                <span className="text-sm font-semibold">5-Star Highlight</span>
               </div>
               <div className="flex gap-4">
                 <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-semibold shrink-0">
-                  JT
+                  {initialsOf(shoutout.clientName || "A")}
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm italic text-foreground/90">
-                    "{firstName} did an amazing job! The house has never looked this clean. She was very
-                    thorough and professional.{" "}
-                    <span className="text-emerald-600 font-semibold not-italic">
-                      Highly recommend!
-                    </span>
-                    "
-                  </p>
-                  <div className="mt-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold">Jessica T.</p>
-                      <p className="text-xs text-muted-foreground">Vaudreuil · 2 days ago</p>
+                <div className="flex-1 min-w-0">
+                  {shoutout.comment ? (
+                    <p className="text-sm italic text-foreground/90 whitespace-pre-wrap">
+                      "{shoutout.comment}"
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">5-star review, no written comment.</p>
+                  )}
+                  <div className="mt-4 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{shoutout.clientName || "Anonymous"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[shoutout.area, format(new Date(shoutout.createdAt), "LLL d, y")]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </div>
-                    <div className="flex gap-0.5">
+                    <div className="flex gap-0.5 shrink-0">
                       {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} className="h-4 w-4 fill-amber-400 text-amber-400" />
+                        <Star
+                          key={i}
+                          className={`h-4 w-4 ${
+                            i < Math.round(shoutout.rating)
+                              ? "fill-amber-400 text-amber-400"
+                              : "text-muted-foreground/30"
+                          }`}
+                        />
                       ))}
                     </div>
                   </div>
@@ -502,6 +331,7 @@ export default function DashboardPage() {
               </div>
               <ThumbsUp className="absolute right-6 top-6 h-16 w-16 text-emerald-100 -z-0" />
             </div>
+            ) : null}
 
             {/* Detailed performance metrics */}
             <div className="rounded-xl border bg-card p-5 shadow-sm">
@@ -510,13 +340,10 @@ export default function DashboardPage() {
                 <h3 className="font-semibold">Detailed Performance Metrics</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                A breakdown of your core performance indicators this month.
+                From Hub form data for this period.
               </p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <MetricBox label="ATTENDANCE" value="98%" badge="Target: 95%" badgeTone="emerald" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
                 <MetricBox label="EFFICIENCY" value={efficiencyLabel} badge={efficiencyBadge} badgeTone="emerald" />
-                <MetricBox label="CALL BACKS" value="0" badge="Perfect" badgeTone="emerald" />
-                <MetricBox label="DAMAGED/LOST" value="0" badge="Perfect" badgeTone="emerald" />
               </div>
             </div>
 
@@ -532,7 +359,7 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {feedback.slice(0, 5).map((fb) => {
+                  {feedback.map((fb) => {
                     const rounded = Math.round(fb.rating);
                     return (
                       <div key={fb.id} className="rounded-lg border p-4">
@@ -584,26 +411,35 @@ export default function DashboardPage() {
 
           {/* Right column */}
           <div className="space-y-6">
-            {/* Google reviews */}
-            <div className="rounded-xl border bg-amber-50/60 border-amber-200 p-5 shadow-sm">
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                <h3 className="font-semibold">Google Review Performance</h3>
+                <Lock className="h-4 w-4 text-emerald-600" />
+                <h3 className="font-semibold">Confirmed lock-ins</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Track your 5-star reviews on Google.
+                Hub lock-in bonuses for this person in the selected range.
               </p>
-              <div className="flex items-end justify-between">
-                <span className="text-3xl font-bold">18</span>
-                <span className="text-xs text-muted-foreground">Goal: 20</span>
-              </div>
-              <ProgressBar value={18} max={20} className="mt-2" />
-              <p className="text-xs italic text-amber-700 mt-3">
-                "Just 2 more 5-star reviews to unlock your monthly performance bonus!"
-              </p>
+              {periodLockIns.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No confirmed lock-ins.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {periodLockIns.map((row) => (
+                    <li key={row.id} className="flex items-start justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{row.clientName || "Client"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lockInEventAt(row) ? format(new Date(lockInEventAt(row)), "LLL d, y") : ""}
+                        </p>
+                      </div>
+                      <span className="font-semibold whitespace-nowrap">{formatMoney(row.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            {/* Leaderboard */}
+            {/* Leaderboard (admin only — other people's pay should not be visible to staff) */}
+            {admin ? (
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
                 <Crown className="h-4 w-4 text-amber-500" />
@@ -637,6 +473,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -740,29 +577,9 @@ function LeaderRow({
         </p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold">
-          ${earnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </p>
+        <p className="text-sm font-bold">{formatMoney(earnings)}</p>
         <p className="text-[10px] text-muted-foreground">earnings</p>
       </div>
-    </div>
-  );
-}
-
-
-function ProgressBar({
-  value,
-  max,
-  className = "",
-}: {
-  value: number;
-  max: number;
-  className?: string;
-}) {
-  const pct = Math.min(100, (value / max) * 100);
-  return (
-    <div className={`h-2 w-full rounded-full bg-muted overflow-hidden ${className}`}>
-      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
     </div>
   );
 }

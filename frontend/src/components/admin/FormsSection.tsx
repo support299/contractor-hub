@@ -5,12 +5,13 @@ import { toast } from "sonner";
 import {
   addForm,
   deleteForm,
+  duplicateForm,
   updateForm,
   useForms,
   slugify,
   type HubForm,
 } from "@/lib/forms-store";
-import { ExternalLink, Eye, FileText, Inbox, Pencil, Plus, Search } from "lucide-react";
+import { Copy, ExternalLink, Eye, FileText, Inbox, Pencil, Plus, Search } from "lucide-react";
 import { FormBuilderDialog } from "./FormBuilderDialog";
 import { Link } from "react-router-dom";
 
@@ -95,6 +96,16 @@ export function FormsSection() {
       setOpen(false);
     } catch (err) {
       toast.error("Could not delete form");
+      console.error(err);
+    }
+  };
+
+  const handleDuplicate = async (f: HubForm) => {
+    try {
+      const clone = await duplicateForm(f.id);
+      toast.success(`${clone.name} created`);
+    } catch (err) {
+      toast.error("Could not duplicate form");
       console.error(err);
     }
   };
@@ -204,6 +215,14 @@ export function FormsSection() {
                         >
                           <Eye className="h-4 w-4" />
                         </a>
+                        <button
+                          onClick={() => handleDuplicate(f)}
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label="Duplicate form"
+                          title="Duplicate form"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => openEdit(f)}
                           className="text-muted-foreground hover:text-foreground"

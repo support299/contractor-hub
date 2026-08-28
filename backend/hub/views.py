@@ -1,7 +1,9 @@
+import copy
 import re
 import uuid
 from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
@@ -25,8 +27,14 @@ from .models import (
     HubUser,
 )
 from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
+from .staff_access import (
+    STAFF_CREATE_BLOCKED_SLUGS,
+    filter_leave_approvals_for_staff,
+    filter_submissions_for_staff,
+)
 from .serializers import (
     FileUploadSerializer,
+    GhlEmailLoginSerializer,
     HubAlertSerializer,
     HubDocumentSerializer,
     HubFormSerializer,
@@ -45,6 +53,7 @@ from .serializers import (
 )
 from .services.auth import (
     clear_otp,
+    find_hub_user_by_email,
     find_hub_user_by_phone,
     find_hub_user_for_login,
     generate_otp_code,
@@ -210,6 +219,31 @@ class PasswordLoginView(APIView):
         )
 
 
+class GhlEmailLoginView(APIView):
+    """GHL custom-menu SSO: email of an active hub user → JWT (no password)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not getattr(settings, "HUB_GHL_EMAIL_LOGIN", True):
+            return Response(
+                {
+                    "detail": "Email auto-login is disabled.",
+                    "code": "disabled",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ser = GhlEmailLoginSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        hub_user = find_hub_user_by_email(ser.validated_data["email"])
+        if not hub_user:
+            return Response(
+                {"detail": "No active staff account found for that email."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(tokens_for_hub_user(hub_user))
+
+
 class SetPasswordView(APIView):
     """First-time password for existing HubUser by email (no public signup)."""
 
@@ -217,8 +251,6 @@ class SetPasswordView(APIView):
 
     def post(self, request):
         from django.core.exceptions import ValidationError as DjangoValidationError
-
-        from .services.auth import find_hub_user_by_email
 
         ser = SetPasswordSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -381,6 +413,31 @@ class HubFormViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
         return Response(self.get_serializer(form).data)
 
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, id=None):
+        original = self.get_object()
+        name = f"Copy of {original.name}"[:255]
+        base = (original.slug or "form")[:75]
+        candidate = f"{base}-copy"[:80]
+        n = 2
+        while HubForm.objects.filter(slug=candidate).exists():
+            suffix = f"-copy-{n}"
+            candidate = f"{base[: 80 - len(suffix)]}{suffix}"
+            n += 1
+        clone = HubForm.objects.create(
+            name=name,
+            description=original.description,
+            url="",
+            slug=candidate,
+            status=original.status,
+            fields=copy.deepcopy(original.fields),
+            extra_fields=copy.deepcopy(original.extra_fields),
+        )
+        return Response(
+            self.get_serializer(clone).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class HubFormSubmissionViewSet(viewsets.ModelViewSet):
     queryset = HubFormSubmission.objects.select_related("form").all()
@@ -392,7 +449,30 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [AllowAny()]
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsAdminRole()]
         return [HubAccess()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if user_is_hub_admin(self.request.user):
+            return qs
+        profile = getattr(self.request.user, "hub_profile", None)
+        if not profile:
+            return qs.none()
+        return filter_submissions_for_staff(qs, profile)
+
+    def create(self, request, *args, **kwargs):
+        form_id = request.data.get("formId") or request.data.get("form_id")
+        if form_id:
+            form = HubForm.objects.filter(pk=form_id).first()
+            if form and form.slug in STAFF_CREATE_BLOCKED_SLUGS:
+                if not user_is_hub_admin(request.user):
+                    return Response(
+                        {"detail": "Only admins can add these records."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         submission = serializer.save()
@@ -402,6 +482,16 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
             from .services.leave_notify import notify_leave_submitted
 
             notify_leave_submitted(submission)
+        from .services.tip_confirm import maybe_run_tip_confirm
+
+        maybe_run_tip_confirm(submission)
+        return submission
+
+    def perform_update(self, serializer):
+        submission = serializer.save()
+        from .services.tip_confirm import maybe_run_tip_confirm
+
+        maybe_run_tip_confirm(submission)
         return submission
 
     @action(detail=False, methods=["get"], url_path="by-form/(?P<form_id>[^/.]+)")
@@ -464,6 +554,15 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve"):
             return [HubAccess()]
         return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if user_is_hub_admin(self.request.user):
+            return qs
+        profile = getattr(self.request.user, "hub_profile", None)
+        if not profile:
+            return qs.none()
+        return filter_leave_approvals_for_staff(qs, profile)
 
     def perform_update(self, serializer):
         previous_status = serializer.instance.status

@@ -16,7 +16,8 @@ import {
   submitFormAnswers,
   type HubForm,
 } from "@/lib/forms-store";
-import { fetchUsers, type HubUser } from "@/lib/hub-store";
+import { fetchUsers, useSession, type HubUser } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
 import { FieldRenderer, isStaticType } from "@/pages/PublicFormPage";
 
 interface Props {
@@ -28,6 +29,9 @@ interface Props {
 }
 
 export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title }: Props) {
+  const session = useSession();
+  const staffNameLock =
+    !isAdminSession(session) && session?.name ? session.name : undefined;
   const [form, setForm] = useState<HubForm | null>(null);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<HubUser[]>([]);
@@ -41,9 +45,15 @@ export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title 
     Promise.all([fetchFormBySlug(slug), fetchUsers()]).then(([f, u]) => {
       setForm(f);
       setUsers(u);
+      if (staffNameLock && f) {
+        const userField = f.fields.find((x) => x.type === "users");
+        if (userField) {
+          setAnswers({ [userField.id]: [staffNameLock] });
+        }
+      }
       setLoading(false);
     });
-  }, [open, slug]);
+  }, [open, slug, staffNameLock]);
 
   const visibleFields = useMemo(() => {
     if (!form) return [];
@@ -106,6 +116,7 @@ export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title 
                   onChange={(v) => setAnswer(f.id, v)}
                   users={users}
                   formSlug={slug}
+                  staffNameLock={staffNameLock}
                 />
               ))}
             </form>

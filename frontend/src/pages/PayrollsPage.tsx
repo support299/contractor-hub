@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useUsers } from "@/lib/hub-store";
+import { useUsers, useSession } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
 import {
   deleteSubmission,
   fetchForms,
@@ -90,6 +91,8 @@ function fmtMoney(n: number): string {
 
 export default function PayrollsPage() {
   const users = useUsers();
+  const session = useSession();
+  const admin = isAdminSession(session);
   const activeUsers = useMemo(
     () => users.filter((u) => u.status === "active"),
     [users],
@@ -114,6 +117,12 @@ export default function PayrollsPage() {
   });
 
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!admin && session?.userId) {
+      setStaffId(session.userId);
+    }
+  }, [admin, session?.userId]);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -286,16 +295,23 @@ export default function PayrollsPage() {
             <p className="text-sm text-muted-foreground">
               {loading
                 ? "Loading…"
-                : `${filtered.length} submission${filtered.length === 1 ? "" : "s"} for the selected period`}
+                : admin
+                  ? `${filtered.length} submission${filtered.length === 1 ? "" : "s"} for the selected period`
+                  : "Your payroll for the selected period"}
             </p>
           </div>
+          {admin ? (
+            <>
           <Button className="h-9 gap-2" onClick={() => setSubmitOpen(true)}>
             <FilePlus className="h-4 w-4" />
             Submit Record
           </Button>
           <PayrollImportDialog users={activeUsers} onImported={() => setReloadKey((k) => k + 1)} />
+            </>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {admin ? (
           <Select value={staffId} onValueChange={setStaffId}>
 
             <SelectTrigger className="h-9 min-w-[200px]">
@@ -310,6 +326,11 @@ export default function PayrollsPage() {
               ))}
             </SelectContent>
           </Select>
+          ) : (
+            <div className="h-9 px-3 inline-flex items-center rounded-md border bg-card text-sm text-muted-foreground">
+              {session?.name || "Your records"}
+            </div>
+          )}
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -408,7 +429,7 @@ export default function PayrollsPage() {
                   <span>Records</span>
                 )}
               </div>
-              {selected.size > 0 && (
+              {admin && selected.size > 0 && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -424,6 +445,7 @@ export default function PayrollsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left">
                   <tr>
+                    {admin ? (
                     <th className="px-4 py-3 w-10">
                       <Checkbox
                         checked={paged.length > 0 && paged.every((s) => selected.has(s.id))}
@@ -434,6 +456,7 @@ export default function PayrollsPage() {
                         aria-label="Select all"
                       />
                     </th>
+                    ) : null}
                     <th className="px-4 py-3 font-medium whitespace-nowrap">Submitted</th>
                     {answerFields.map((f) => (
                       <th
@@ -451,6 +474,7 @@ export default function PayrollsPage() {
                 <tbody>
                   {paged.map((s) => (
                     <tr key={s.id} className="border-t align-top">
+                      {admin ? (
                       <td className="px-4 py-3">
                         <Checkbox
                           checked={selected.has(s.id)}
@@ -465,6 +489,7 @@ export default function PayrollsPage() {
                           aria-label="Select row"
                         />
                       </td>
+                      ) : null}
                       <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                         {new Date(s.createdAt).toLocaleString()}
                       </td>
@@ -498,7 +523,7 @@ export default function PayrollsPage() {
                   {filtered.length === 0 && !loading && (
                     <tr>
                       <td
-                        colSpan={answerFields.length + 3}
+                        colSpan={answerFields.length + (admin ? 3 : 2)}
                         className="px-4 py-10 text-center text-sm text-muted-foreground"
                       >
                         No submissions in the selected date range.
@@ -558,6 +583,7 @@ export default function PayrollsPage() {
         </>
       )}
 
+      {admin ? (
       <FormSubmitDialog
         slug={PAYROLL_SLUG}
         open={submitOpen}
@@ -565,6 +591,7 @@ export default function PayrollsPage() {
         onSubmitted={() => setReloadKey((k) => k + 1)}
         title="Submit Payroll Record"
       />
+      ) : null}
 
       <AlertDialog open={confirmOpen} onOpenChange={(o) => !deleting && setConfirmOpen(o)}>
         <AlertDialogContent>

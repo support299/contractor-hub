@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +33,13 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [, setAuthTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setAuthTick((n) => n + 1);
+    window.addEventListener("cotg-storage", bump);
+    return () => window.removeEventListener("cotg-storage", bump);
+  }, []);
 
   if (getAccessToken() && getSession()?.userId) {
     return <Navigate to={from} replace />;
