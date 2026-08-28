@@ -235,6 +235,27 @@ def confirm_pending(pending: PendingLockIn, *, visit_id: str, visit_at) -> Pendi
     return pending
 
 
+def patch_pending_stage1(pending: PendingLockIn, payload: dict) -> PendingLockIn:
+    """Attach recurring job / expected visit after Convert to Job. No extra SMS."""
+    if pending.locked_in or pending.status != PendingLockIn.Status.IN_PROCESS:
+        return pending
+    fields = []
+    job_id = str(payload.get("job_id") or payload.get("recurring_jobber_job_id") or "").strip()
+    if job_id:
+        pending.recurring_jobber_job_id = job_id
+        fields.append("recurring_jobber_job_id")
+    frequency = payload.get("frequency")
+    if frequency is not None and str(frequency).strip():
+        pending.frequency = str(frequency).strip()[:64]
+        fields.append("frequency")
+    if "expected_first_visit_at" in payload:
+        pending.expected_first_visit_at = parse_ts(payload.get("expected_first_visit_at"))
+        fields.append("expected_first_visit_at")
+    if fields:
+        pending.save(update_fields=fields + ["updated_at"])
+    return pending
+
+
 def expire_pending(pending: PendingLockIn, reason: str = "Eligibility Period Exceeded") -> PendingLockIn:
     with transaction.atomic():
         pending = PendingLockIn.objects.select_for_update().get(pk=pending.pk)

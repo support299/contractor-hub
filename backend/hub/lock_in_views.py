@@ -83,6 +83,18 @@ class InternalPendingConfirmView(InternalLockInAPIView):
         return Response({"pending": svc.serialize_pending(pending)})
 
 
+class InternalPendingPatchView(InternalLockInAPIView):
+    def patch(self, request, pk):
+        try:
+            pending = PendingLockIn.objects.get(pk=pk)
+        except PendingLockIn.DoesNotExist:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        pending = svc.patch_pending_stage1(
+            pending, request.data if isinstance(request.data, dict) else {}
+        )
+        return Response({"pending": svc.serialize_pending(pending)})
+
+
 class InternalPendingExpireView(InternalLockInAPIView):
     def post(self, request, pk):
         try:

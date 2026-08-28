@@ -70,6 +70,11 @@ urlpatterns = [
         name="internal-lock-in-pending-confirm",
     ),
     path(
+        "internal/lock-in/pending/<uuid:pk>/",
+        lock_in_views.InternalPendingPatchView.as_view(),
+        name="internal-lock-in-pending-patch",
+    ),
+    path(
         "internal/lock-in/pending/<uuid:pk>/expire/",
         lock_in_views.InternalPendingExpireView.as_view(),
         name="internal-lock-in-pending-expire",

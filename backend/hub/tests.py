@@ -465,6 +465,28 @@ class LockInFlowTests(TestCase):
 
         self.assertEqual(HubNotification.objects.filter(type="lock_in_confirmed").count(), 0)
 
+    def test_patch_attaches_job_id(self):
+        res = self.client_api.post(
+            "/api/internal/lock-in/pending/",
+            {
+                "quote_id": "q1",
+                "client_id": "c1",
+                "client_name": "Jane",
+                "technician_jobber_ids": ["jb_user_1"],
+            },
+            format="json",
+        )
+        pk = res.data["pending"]["id"]
+        self.assertEqual(res.data["pending"]["job_id"], "")
+        patched = self.client_api.patch(
+            f"/api/internal/lock-in/pending/{pk}/",
+            {"job_id": "job_r", "frequency": "Bi-weekly"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.data["pending"]["job_id"], "job_r")
+        self.assertEqual(patched.data["pending"]["frequency"], "Bi-weekly")
+
 
 class PublicUserDirectoryTests(TestCase):
     def test_anonymous_gets_active_names_and_pictures_only(self):
