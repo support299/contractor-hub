@@ -413,3 +413,31 @@ class LockInBonus(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.bonus_type} {self.status} {self.technician_id}"
+
+
+class HubApiKey(TimeStampedModel):
+    """Server-to-server API key for external dashboard / analytics consumers."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=128)
+    # Prefix shown in admin; full secret is never stored (only key_hash).
+    prefix = models.CharField(max_length=16, db_index=True)
+    key_hash = models.CharField(max_length=64, unique=True)
+    is_active = models.BooleanField(default=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="hub_api_keys_created",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["is_active", "prefix"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.prefix}…)"

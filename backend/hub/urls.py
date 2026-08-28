@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from . import lock_in_views, views
+from . import analytics_views, lock_in_views, views
 
 router = DefaultRouter()
 router.register(r"users", views.HubUserViewSet, basename="hub-users")
@@ -87,6 +87,11 @@ urlpatterns = [
         "internal/lock-in/users/<uuid:pk>/",
         lock_in_views.InternalUserGhlIdView.as_view(),
         name="internal-lock-in-user-ghl",
+    ),
+    path(
+        "admin-internal-app/analytics/",
+        analytics_views.AnalyticsOverviewView.as_view(),
+        name="analytics-overview",
     ),
     path("", include(router.urls)),
 ]

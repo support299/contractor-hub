@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     HubAlert,
+    HubApiKey,
     HubDocument,
     HubForm,
     HubFormSubmission,
@@ -131,3 +132,16 @@ class LockInBonusAdmin(admin.ModelAdmin):
     list_filter = ("status", "bonus_paid", "bonus_type")
     search_fields = ("technician__name", "pending__client_name", "pending__quote_id")
     raw_id_fields = ("technician", "pending")
+
+
+@admin.register(HubApiKey)
+class HubApiKeyAdmin(admin.ModelAdmin):
+    list_display = ("name", "prefix", "is_active", "last_used_at", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "prefix")
+    readonly_fields = ("prefix", "key_hash", "last_used_at", "created_at", "updated_at")
+    raw_id_fields = ("created_by",)
+
+    def has_add_permission(self, request):
+        # Keys must be created via: python manage.py create_api_key
+        return False
