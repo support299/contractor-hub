@@ -68,3 +68,40 @@ export async function fetchLockInBonuses(): Promise<LockInBonusRow[]> {
   }
   return rows;
 }
+
+export type VisitSummary = {
+  total: number;
+  byTechnician: Record<string, number>;
+};
+
+export async function fetchVisitSummary(params: {
+  startAtAfter?: string;
+  startAtBefore?: string;
+}): Promise<VisitSummary> {
+  const q = new URLSearchParams();
+  if (params.startAtAfter) q.set("start_at_after", params.startAtAfter);
+  if (params.startAtBefore) q.set("start_at_before", params.startAtBefore);
+  const qs = q.toString();
+  const data = await api<{ total?: number; by_technician?: Record<string, number> }>(
+    `/visits/summary/${qs ? `?${qs}` : ""}`,
+  );
+  const raw = data?.by_technician ?? {};
+  const byTechnician: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    byTechnician[k] = Number(v) || 0;
+  }
+  return { total: Number(data?.total) || 0, byTechnician };
+}
+
+export function rangeToVisitQuery(range: { from?: Date; to?: Date } | undefined): {
+  startAtAfter?: string;
+  startAtBefore?: string;
+} {
+  if (!range?.from) return {};
+  const start = new Date(range.from);
+  start.setHours(0, 0, 0, 0);
+  const endSrc = range.to ?? range.from;
+  const end = new Date(endSrc);
+  end.setHours(23, 59, 59, 999);
+  return { startAtAfter: start.toISOString(), startAtBefore: end.toISOString() };
+}

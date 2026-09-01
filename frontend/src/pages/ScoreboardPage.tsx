@@ -1,35 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import {
-  Award,
+  CalendarCheck,
   Crown,
-  DollarSign,
   Lock,
+  MessageSquare,
+  Monitor,
   Star,
   Users,
-  Zap,
 } from "lucide-react";
-import { Monitor } from "lucide-react";
 import { useUsers, getSectors, type HubUser, type Role } from "@/lib/hub-store";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
   fetchLockInBonuses,
+  fetchVisitSummary,
   isConfirmedLockIn,
   lockInEventAt,
+  rangeToVisitQuery,
   type LockInBonusRow,
+  type VisitSummary,
 } from "@/lib/lock-in-store";
 import {
-  PAYROLL_SLUG,
-  BONUS_SLUG,
   REVIEW_SLUGS,
-  EFFICIENCY_SLUG,
-  avgForUsers,
   avgStarRating,
   avgStarRatingForNames,
   collectFeedbackForNames,
-  computeBonuses,
-  computeEarnings,
-  computeEfficiencyScore,
+  countFeedbackByAudience,
+  countFiveStarReviews,
   dateInRange,
   formatMoney,
   formatMomDelta,
@@ -38,7 +35,6 @@ import {
   monthSelectOptions,
   parseYearMonth,
   shiftMonth,
-  sumForUsers,
 } from "@/lib/dashboard-metrics";
 import {
   Select,
@@ -77,14 +73,13 @@ export default function ScoreboardPage() {
   const [sector, setSector] = useState("all");
   const [sectors, setSectors] = useState<string[]>([]);
 
-  const [payrollForm, setPayrollForm] = useState<HubForm | null>(null);
-  const [payrollSubs, setPayrollSubs] = useState<FormSubmission[]>([]);
-  const [bonusForm, setBonusForm] = useState<HubForm | null>(null);
-  const [bonusSubs, setBonusSubs] = useState<FormSubmission[]>([]);
   const [reviewData, setReviewData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
-  const [efficiencyForm, setEfficiencyForm] = useState<HubForm | null>(null);
-  const [efficiencySubs, setEfficiencySubs] = useState<FormSubmission[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
+  const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
+  const [prevVisitSummary, setPrevVisitSummary] = useState<VisitSummary>({
+    total: 0,
+    byTechnician: {},
+  });
 
   useEffect(() => {
     let active = true;
@@ -104,25 +99,13 @@ export default function ScoreboardPage() {
     let active = true;
     const load = async () => {
       const forms = await fetchForms();
-      const f = forms.find((x) => x.slug === PAYROLL_SLUG) ?? null;
-      const b = forms.find((x) => x.slug === BONUS_SLUG) ?? null;
-      const e = forms.find((x) => x.slug === EFFICIENCY_SLUG) ?? null;
       const reviewForms = forms.filter((x) => REVIEW_SLUGS.includes(x.slug));
-      const [subs, bsubs, rsubs, esubs, bonuses] = await Promise.all([
-        f ? fetchSubmissions(f.id) : Promise.resolve([]),
-        b ? fetchSubmissions(b.id) : Promise.resolve([]),
+      const [rsubs, bonuses] = await Promise.all([
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
-        e ? fetchSubmissions(e.id) : Promise.resolve([]),
         fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
       ]);
       if (!active) return;
-      setPayrollForm(f);
-      setBonusForm(b);
-      setEfficiencyForm(e);
-      setPayrollSubs(subs);
-      setBonusSubs(bsubs);
       setReviewData(reviewForms.map((form, i) => ({ form, subs: rsubs[i] ?? [] })));
-      setEfficiencySubs(esubs);
       setLockIns(bonuses);
     };
     load();
@@ -150,22 +133,30 @@ export default function ScoreboardPage() {
   const nameSet = useMemo(() => new Set(team.map((u) => u.name)), [team]);
   const idSet = useMemo(() => new Set(team.map((u) => u.id)), [team]);
 
-  const earnings = useMemo(
-    () => sumForUsers(team, (u) => computeEarnings(u, payrollSubs, payrollForm, range)),
-    [team, payrollSubs, payrollForm, range],
-  );
-  const prevEarnings = useMemo(
-    () => sumForUsers(team, (u) => computeEarnings(u, payrollSubs, payrollForm, prevRange)),
-    [team, payrollSubs, payrollForm, prevRange],
-  );
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const empty: VisitSummary = { total: 0, byTechnician: {} };
+      const [cur, prev] = await Promise.all([
+        fetchVisitSummary(rangeToVisitQuery(range)).catch(() => empty),
+        fetchVisitSummary(rangeToVisitQuery(prevRange)).catch(() => empty),
+      ]);
+      if (!active) return;
+      setVisitSummary(cur);
+      setPrevVisitSummary(prev);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [range, prevRange]);
 
-  const bonuses = useMemo(
-    () => sumForUsers(team, (u) => computeBonuses(u, bonusSubs, bonusForm, range)),
-    [team, bonusSubs, bonusForm, range],
+  const teamVisits = useMemo(
+    () => team.reduce((acc, u) => acc + (visitSummary.byTechnician[u.id] ?? 0), 0),
+    [team, visitSummary],
   );
-  const prevBonuses = useMemo(
-    () => sumForUsers(team, (u) => computeBonuses(u, bonusSubs, bonusForm, prevRange)),
-    [team, bonusSubs, bonusForm, prevRange],
+  const prevTeamVisits = useMemo(
+    () => team.reduce((acc, u) => acc + (prevVisitSummary.byTechnician[u.id] ?? 0), 0),
+    [team, prevVisitSummary],
   );
 
   const rating = useMemo(
@@ -175,21 +166,6 @@ export default function ScoreboardPage() {
   const prevRating = useMemo(
     () => avgStarRatingForNames(nameSet, reviewData, prevRange),
     [nameSet, reviewData, prevRange],
-  );
-
-  const efficiency = useMemo(
-    () =>
-      avgForUsers(team, (u) =>
-        computeEfficiencyScore(u, efficiencySubs, efficiencyForm, range),
-      ),
-    [team, efficiencySubs, efficiencyForm, range],
-  );
-  const prevEfficiency = useMemo(
-    () =>
-      avgForUsers(team, (u) =>
-        computeEfficiencyScore(u, efficiencySubs, efficiencyForm, prevRange),
-      ),
-    [team, efficiencySubs, efficiencyForm, prevRange],
   );
 
   const periodLockIns = useMemo(() => {
@@ -212,16 +188,28 @@ export default function ScoreboardPage() {
     () => collectFeedbackForNames(nameSet, reviewData, range),
     [nameSet, reviewData, range],
   );
+  const prevFeedback = useMemo(
+    () => collectFeedbackForNames(nameSet, reviewData, prevRange),
+    [nameSet, reviewData, prevRange],
+  );
+  const fiveStarCount = useMemo(() => countFiveStarReviews(feedback), [feedback]);
+  const prevFiveStarCount = useMemo(() => countFiveStarReviews(prevFeedback), [prevFeedback]);
+  const feedbackAudience = useMemo(() => countFeedbackByAudience(feedback), [feedback]);
+  const feedbackSub =
+    feedback.length === 0
+      ? "New and current clients"
+      : `${feedbackAudience.newClients} new · ${feedbackAudience.currentClients} current`;
 
   const leaderboard = useMemo(() => {
     return team
       .map((u) => {
-        const e = computeEarnings(u, payrollSubs, payrollForm, range);
+        const visits = visitSummary.byTechnician[u.id] ?? 0;
         const { avg, count } = avgStarRating(u, reviewData, range);
-        return { user: u, earnings: e, rating: avg, ratingCount: count };
+        const fiveStars = countFiveStarReviews(collectFeedbackForNames(new Set([u.name]), reviewData, range));
+        return { user: u, visits, rating: avg, ratingCount: count, fiveStars };
       })
-      .sort((a, b) => b.earnings - a.earnings);
-  }, [team, payrollSubs, payrollForm, reviewData, range]);
+      .sort((a, b) => b.visits - a.visits || b.fiveStars - a.fiveStars);
+  }, [team, visitSummary, reviewData, range]);
 
   const audienceLabel =
     audience === "employee" ? "employees" : audience === "contractor" ? "contractors" : "team";
@@ -305,16 +293,23 @@ export default function ScoreboardPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
           <KpiCard
-            label="Team Earnings"
-            value={formatMoney(earnings)}
-            delta={formatMomDelta(earnings, prevEarnings, "money")}
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+            label="Total Visits"
+            value={String(teamVisits)}
+            delta={formatMomDelta(teamVisits, prevTeamVisits, "number")}
+            icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />}
           />
           <KpiCard
-            label="Bonuses"
-            value={formatMoney(bonuses)}
-            delta={formatMomDelta(bonuses, prevBonuses, "money")}
-            icon={<Award className="h-4 w-4 text-muted-foreground" />}
+            label="Five-Star Reviews"
+            value={String(fiveStarCount)}
+            delta={formatMomDelta(fiveStarCount, prevFiveStarCount, "number")}
+            icon={<Star className="h-4 w-4 text-amber-500" />}
+          />
+          <KpiCard
+            label="Feedback Received"
+            value={String(feedback.length)}
+            delta={formatMomDelta(feedback.length, prevFeedback.length, "number")}
+            sub={feedbackSub}
+            icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
           />
           <KpiCard
             label="Average Rating"
@@ -338,12 +333,6 @@ export default function ScoreboardPage() {
             sub={periodLockIns.length ? formatMoney(lockInAmount) : "Confirmed this month"}
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
-          <KpiCard
-            label="Avg Efficiency"
-            value={team.length ? `${Math.round(efficiency)}%` : "—"}
-            delta={formatMomDelta(efficiency, prevEfficiency, "percent")}
-            icon={<Zap className="h-4 w-4 text-muted-foreground" />}
-          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -351,7 +340,7 @@ export default function ScoreboardPage() {
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <h3 className="font-semibold mb-1 text-lg">Team Client Feedback</h3>
               <p className="text-xs text-muted-foreground mb-4">
-                Reviews for filtered staff in {monthLabel}.
+                New and current client reviews for filtered staff in {monthLabel}.
               </p>
               {feedback.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">
@@ -424,7 +413,7 @@ export default function ScoreboardPage() {
                 <h3 className="font-semibold text-lg">Leaderboard</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Earnings for {monthLabel}.
+                Most visits for {monthLabel}.
               </p>
               <div className="space-y-2 max-h-[42vh] overflow-y-auto">
                 {leaderboard.length === 0 ? (
@@ -443,7 +432,8 @@ export default function ScoreboardPage() {
                         role={entry.user.role}
                         rating={entry.rating}
                         ratingCount={entry.ratingCount}
-                        earnings={entry.earnings}
+                        visits={entry.visits}
+                        fiveStars={entry.fiveStars}
                         tone={tone}
                       />
                     );
@@ -537,7 +527,8 @@ function LeaderRow({
   role,
   rating,
   ratingCount,
-  earnings,
+  visits,
+  fiveStars,
   tone,
 }: {
   rank: number;
@@ -546,7 +537,8 @@ function LeaderRow({
   role: Role;
   rating: number;
   ratingCount: number;
-  earnings: number;
+  visits: number;
+  fiveStars: number;
   tone?: "gold" | "silver" | "bronze";
 }) {
   const rankTone =
@@ -570,12 +562,13 @@ function LeaderRow({
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
           {ratingCount > 0 ? `${rating.toFixed(1)} (${ratingCount})` : "No ratings"}
+          {fiveStars > 0 ? ` · ${fiveStars} five-star` : ""}
           <span className="opacity-60">· {role}</span>
         </p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold">{formatMoney(earnings)}</p>
-        <p className="text-[10px] text-muted-foreground">earnings</p>
+        <p className="text-sm font-bold">{visits}</p>
+        <p className="text-[10px] text-muted-foreground">visits</p>
       </div>
     </div>
   );

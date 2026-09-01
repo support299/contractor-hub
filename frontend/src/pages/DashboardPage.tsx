@@ -8,6 +8,8 @@ import {
   ClipboardCheck,
   Crown,
   CalendarIcon,
+  CalendarCheck,
+  MessageSquare,
   Lock,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
@@ -27,9 +29,12 @@ import { cn } from "@/lib/utils";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
   fetchLockInBonuses,
+  fetchVisitSummary,
   isConfirmedLockIn,
   lockInEventAt,
+  rangeToVisitQuery,
   type LockInBonusRow,
+  type VisitSummary,
 } from "@/lib/lock-in-store";
 import {
   PAYROLL_SLUG,
@@ -41,6 +46,8 @@ import {
   computeBonuses,
   computeEarnings,
   computeEfficiencyScore,
+  countFeedbackByAudience,
+  countFiveStarReviews,
   dateInRange,
   formatMoney,
   initialsOf,
@@ -85,6 +92,7 @@ export default function DashboardPage() {
   const [efficiencyForm, setEfficiencyForm] = useState<HubForm | null>(null);
   const [efficiencySubs, setEfficiencySubs] = useState<FormSubmission[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
+  const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
 
   useEffect(() => {
     let active = true;
@@ -117,6 +125,20 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const summary = await fetchVisitSummary(rangeToVisitQuery(range)).catch(
+        () => ({ total: 0, byTechnician: {} }) as VisitSummary,
+      );
+      if (!active) return;
+      setVisitSummary(summary);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [range]);
+
   const totalEarnings = useMemo(
     () => computeEarnings(selected, payrollSubs, payrollForm, range),
     [selected, payrollSubs, payrollForm, range],
@@ -128,6 +150,8 @@ export default function DashboardPage() {
     [selected, bonusSubs, bonusForm, range],
   );
   const totalBonusesLabel = formatMoney(totalBonuses);
+
+  const visitCount = selected ? (visitSummary.byTechnician[selected.id] ?? 0) : 0;
 
   const ratingStats = useMemo(
     () => avgStarRating(selected, reviewData, range),
@@ -144,6 +168,12 @@ export default function DashboardPage() {
     () => collectFeedback(selected, reviewData, range),
     [selected, reviewData, range],
   );
+  const fiveStarCount = useMemo(() => countFiveStarReviews(feedback), [feedback]);
+  const feedbackAudience = useMemo(() => countFeedbackByAudience(feedback), [feedback]);
+  const feedbackSub =
+    feedback.length === 0
+      ? "New and current clients"
+      : `${feedbackAudience.newClients} new · ${feedbackAudience.currentClients} current`;
 
   const efficiency = useMemo(
     () => computeEfficiencyScore(selected, efficiencySubs, efficiencyForm, range),
@@ -268,6 +298,24 @@ export default function DashboardPage() {
             icon={<Award className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard
+            label="Total Visits"
+            value={String(visitCount)}
+            sub={`For ${rangeLabel}`}
+            icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
+            label="Five-Star Reviews"
+            value={String(fiveStarCount)}
+            sub={fiveStarCount === 1 ? "Perfect score" : "Perfect scores"}
+            icon={<Star className="h-4 w-4 text-amber-500" />}
+          />
+          <StatCard
+            label="Feedback Received"
+            value={String(feedback.length)}
+            sub={feedbackSub}
+            icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
             label="Average Rating"
             value={avgRatingLabel}
             sub={ratingSub}
@@ -351,7 +399,7 @@ export default function DashboardPage() {
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <h3 className="font-semibold mb-1">Recent Client Feedback</h3>
               <p className="text-xs text-muted-foreground mb-4">
-                What clients are saying about your work.
+                New and current client feedback for your work.
               </p>
               {feedback.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">

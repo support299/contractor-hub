@@ -1,6 +1,8 @@
 """Internal lock-in APIs for service-creator + admin debug lists."""
 
+from django.db.models import Count, Q
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -155,9 +157,38 @@ class InternalUserGhlIdView(InternalLockInAPIView):
 class HubVisitViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = HubVisit.objects.prefetch_related("technicians").all()
     serializer_class = HubVisitSerializer
-    permission_classes = [IsAdminRole]
-    filterset_fields = ["client_jobber_id", "jobber_job_id", "job_type"]
+    permission_classes = [HubAccess]
+    filterset_fields = ["client_jobber_id", "jobber_job_id", "job_type", "technicians"]
     search_fields = ["jobber_visit_id", "client_name", "title"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user_is_hub_admin(user):
+            return qs
+        profile = getattr(user, "hub_profile", None)
+        if profile is None:
+            return qs.none()
+        return qs.filter(technicians=profile)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        qs = self.get_queryset()
+        start = (request.query_params.get("start_at_after") or "").strip()
+        end = (request.query_params.get("start_at_before") or "").strip()
+        if start:
+            qs = qs.filter(Q(start_at__gte=start) | Q(start_at__isnull=True, created_at__gte=start))
+        if end:
+            qs = qs.filter(Q(start_at__lte=end) | Q(start_at__isnull=True, created_at__lte=end))
+
+        total = qs.count()
+        by_technician = {}
+        rows = qs.values("technicians").annotate(c=Count("id", distinct=True))
+        for row in rows:
+            tid = row.get("technicians")
+            if tid:
+                by_technician[str(tid)] = row["c"]
+        return Response({"total": total, "by_technician": by_technician})
 
 
 class PendingLockInViewSet(viewsets.ReadOnlyModelViewSet):

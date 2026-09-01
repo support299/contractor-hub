@@ -10,11 +10,20 @@ export const REVIEW_SLUGS = [
   "evaluez-votre-experience",
   "comment-tu-nous-trouve",
 ];
+export const NEW_CLIENT_REVIEW_SLUGS = [
+  "review-your-recent-experience",
+  "evaluez-votre-experience",
+];
+export const CURRENT_CLIENT_REVIEW_SLUGS = [
+  "how-are-we-doing",
+  "comment-tu-nous-trouve",
+];
 export const EFFICIENCY_SLUG = "new-efficiency";
 
 export type FeedbackItem = {
   id: string;
   formName: string;
+  formSlug: string;
   clientName: string;
   area: string;
   rating: number;
@@ -187,6 +196,7 @@ function feedbackFromSub(
   return {
     id: sub.id,
     formName: form.name,
+    formSlug: form.slug ?? "",
     clientName: nameId ? String(sub.answers[nameId] ?? "Anonymous") : "Anonymous",
     area: areaId ? String(sub.answers[areaId] ?? "") : "",
     rating: avg,
@@ -194,6 +204,23 @@ function feedbackFromSub(
     createdAt: sub.createdAt,
     staffNames: submissionStaffNames(sub, form),
   };
+}
+
+export function countFiveStarReviews(items: FeedbackItem[]): number {
+  return items.filter((f) => f.rating >= 5).length;
+}
+
+export function countFeedbackByAudience(items: FeedbackItem[]): {
+  newClients: number;
+  currentClients: number;
+} {
+  let newClients = 0;
+  let currentClients = 0;
+  for (const item of items) {
+    if (NEW_CLIENT_REVIEW_SLUGS.includes(item.formSlug)) newClients += 1;
+    else if (CURRENT_CLIENT_REVIEW_SLUGS.includes(item.formSlug)) currentClients += 1;
+  }
+  return { newClients, currentClients };
 }
 
 export function collectFeedback(

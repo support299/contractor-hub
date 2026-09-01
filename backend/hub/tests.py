@@ -984,4 +984,83 @@ class StaffPermissionTests(TestCase):
         self.assertEqual(res.status_code, 201)
 
 
+class VisitSummaryPermissionTests(TestCase):
+    def setUp(self):
+        from datetime import datetime, timezone as dt_timezone
+
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser, HubVisit
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Ada Admin",
+            email="ada-visits@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.employee = HubUser.objects.create(
+            name="Eli Employee",
+            email="eli-visits@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.other = HubUser.objects.create(
+            name="Cara Contractor",
+            email="cara-visits@test.local",
+            role=HubUser.Role.CONTRACTOR,
+        )
+        in_range = HubVisit.objects.create(
+            jobber_visit_id="dash-v1",
+            client_name="Jane",
+            start_at=datetime(2026, 9, 10, 14, 0, tzinfo=dt_timezone.utc),
+        )
+        in_range.technicians.set([self.employee])
+        other_visit = HubVisit.objects.create(
+            jobber_visit_id="dash-v2",
+            client_name="Bob",
+            start_at=datetime(2026, 9, 12, 10, 0, tzinfo=dt_timezone.utc),
+        )
+        other_visit.technicians.set([self.other])
+        out_of_range = HubVisit.objects.create(
+            jobber_visit_id="dash-v3",
+            client_name="Old",
+            start_at=datetime(2026, 8, 2, 10, 0, tzinfo=dt_timezone.utc),
+        )
+        out_of_range.technicians.set([self.employee])
+
+        self.emp_client = APIClient()
+        self.emp_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+        self.admin_client = APIClient()
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+
+    def test_staff_summary_is_own_visits_only(self):
+        res = self.emp_client.get(
+            "/api/visits/summary/",
+            {
+                "start_at_after": "2026-09-01T00:00:00Z",
+                "start_at_before": "2026-09-30T23:59:59Z",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["total"], 1)
+        self.assertEqual(res.data["by_technician"][str(self.employee.id)], 1)
+        self.assertNotIn(str(self.other.id), res.data["by_technician"])
+
+    def test_admin_summary_includes_all_technicians(self):
+        res = self.admin_client.get(
+            "/api/visits/summary/",
+            {
+                "start_at_after": "2026-09-01T00:00:00Z",
+                "start_at_before": "2026-09-30T23:59:59Z",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["total"], 2)
+        self.assertEqual(res.data["by_technician"][str(self.employee.id)], 1)
+        self.assertEqual(res.data["by_technician"][str(self.other.id)], 1)
+
+
 
