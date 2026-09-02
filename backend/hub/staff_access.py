@@ -6,6 +6,18 @@ LEAVE_FORM_SLUG = "request-time-off"
 PAYROLL_PERIODS_SLUG = "new-payroll-periods"
 
 # Only admins may insert these (payroll, bonuses, recorded absences, efficiency).
+SCOREBOARD_READ_SLUGS = frozenset(
+    {
+        "review-your-recent-experience",
+        "how-are-we-doing",
+        "evaluez-votre-experience",
+        "comment-tu-nous-trouve",
+        "new-payroll-records",
+        "bonus-submissions",
+        "new-efficiency",
+    }
+)
+
 STAFF_CREATE_BLOCKED_SLUGS = frozenset(
     {
         "new-payroll-records",

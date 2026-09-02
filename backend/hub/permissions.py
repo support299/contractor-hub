@@ -22,6 +22,18 @@ def user_is_hub_admin(user) -> bool:
     return bool(profile and profile.role == "admin")
 
 
+def user_is_hub_display(user) -> bool:
+    if not user_is_authenticated(user):
+        return False
+    profile = getattr(user, "hub_profile", None)
+    return bool(profile and profile.role == "display")
+
+
+def user_can_read_scoreboard(user) -> bool:
+    """Admin or office-TV display account. Not regular staff."""
+    return user_is_hub_admin(user) or user_is_hub_display(user)
+
+
 class IsAdminRole(BasePermission):
     """Hub admin (or open-access mode)."""
 
@@ -39,6 +51,24 @@ class HubAccess(BasePermission):
         if hub_open_access():
             return True
         return user_is_authenticated(request.user)
+
+
+class HubStaffAccess(BasePermission):
+    """Authenticated hub user except display (TV) accounts."""
+
+    def has_permission(self, request, view):
+        if user_is_hub_display(request.user):
+            return False
+        return HubAccess().has_permission(request, view)
+
+
+class IsScoreboardReader(BasePermission):
+    """Team scoreboard reads: admin or display."""
+
+    def has_permission(self, request, view):
+        if hub_open_access():
+            return True
+        return user_can_read_scoreboard(request.user)
 
 
 class IsAdminOrReadOnly(BasePermission):

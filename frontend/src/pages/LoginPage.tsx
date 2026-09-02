@@ -16,6 +16,8 @@ import {
   ApiError,
   getAccessToken,
   getSession,
+  homePathForSession,
+  isDisplaySession,
   loginPassword,
   requestOtp,
   verifyOtp,
@@ -25,7 +27,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from =
-    (location.state as { from?: string } | null)?.from || "/admin/dashboard";
+    (location.state as { from?: string } | null)?.from || homePathForSession();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -42,7 +44,9 @@ export default function LoginPage() {
   }, []);
 
   if (getAccessToken() && getSession()?.userId) {
-    return <Navigate to={from} replace />;
+    const session = getSession();
+    const dest = isDisplaySession(session) ? "/tv/scoreboard" : from;
+    return <Navigate to={dest} replace />;
   }
 
   const onPasswordSubmit = async (e: FormEvent) => {
@@ -51,7 +55,7 @@ export default function LoginPage() {
     try {
       await loginPassword(username.trim(), password);
       toast.success("Signed in");
-      navigate(from, { replace: true });
+      navigate(isDisplaySession() ? "/tv/scoreboard" : from, { replace: true });
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -86,7 +90,7 @@ export default function LoginPage() {
     try {
       await verifyOtp(phone.trim(), otp.trim());
       toast.success("Signed in");
-      navigate(from, { replace: true });
+      navigate(isDisplaySession() ? "/tv/scoreboard" : from, { replace: true });
     } catch (err) {
       const msg =
         err instanceof ApiError ? String(err.message) : "Invalid or expired code";

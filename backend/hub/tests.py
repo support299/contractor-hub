@@ -1063,4 +1063,78 @@ class VisitSummaryPermissionTests(TestCase):
         self.assertEqual(res.data["by_technician"][str(self.other.id)], 1)
 
 
+class DisplayRolePermissionTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubForm, HubFormSubmission, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.display = HubUser.objects.create(
+            name="Office TV",
+            email="tv@test.local",
+            role=HubUser.Role.DISPLAY,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.employee = HubUser.objects.create(
+            name="Eli Employee",
+            email="eli-tv@test.local",
+            role=HubUser.Role.EMPLOYEE,
+            regular_rate=Decimal("22"),
+        )
+        self.payroll = HubForm.objects.create(
+            name="Payroll",
+            slug="new-payroll-records",
+            fields=[{"id": "u", "type": "users", "label": "Staff"}],
+        )
+        self.leave = HubForm.objects.create(
+            name="Time off",
+            slug="request-time-off",
+            fields=LEAVE_FIELDS,
+        )
+        self.payroll_sub = HubFormSubmission.objects.create(
+            form=self.payroll,
+            answers={"u": ["Eli Employee"]},
+        )
+        HubFormSubmission.objects.create(
+            form=self.leave,
+            answers={"u": ["Eli Employee"]},
+        )
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.display)['access']}"
+        )
+
+    def test_display_sees_scoreboard_submissions_and_rates(self):
+        users = self.client.get("/api/users/")
+        self.assertEqual(users.status_code, 200)
+        eli = next(u for u in users.data if u["name"] == "Eli Employee")
+        self.assertEqual(str(eli["regularRate"]), "22.00")
+        self.assertNotIn("email", eli)
+
+        subs = self.client.get("/api/submissions/")
+        self.assertEqual(subs.status_code, 200)
+        from hub.models import HubFormSubmission as Sub
+
+        slugs = {Sub.objects.get(pk=row["id"]).form.slug for row in subs.data}
+        self.assertIn("new-payroll-records", slugs)
+        self.assertNotIn("request-time-off", slugs)
+
+    def test_display_cannot_write_users_or_read_hub_staff_apis(self):
+        patch = self.client.patch(
+            f"/api/users/{self.employee.id}/",
+            {"name": "Hacked"},
+            format="json",
+        )
+        self.assertEqual(patch.status_code, 403)
+
+        me = self.client.patch("/api/auth/me/", {"email": "x@test.local"}, format="json")
+        self.assertEqual(me.status_code, 403)
+
+        folders = self.client.get("/api/resource-folders/")
+        self.assertEqual(folders.status_code, 403)
+
+        notes = self.client.get("/api/notifications/")
+        self.assertEqual(notes.status_code, 403)
+
 

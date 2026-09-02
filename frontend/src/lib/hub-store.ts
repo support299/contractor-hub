@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, getSession, type Session } from "./api";
 
-export type Role = "employee" | "contractor" | "admin";
+export type Role = "employee" | "contractor" | "admin" | "display";
 export type UserStatus = "active" | "inactive";
 
 export const POSITIONS = [

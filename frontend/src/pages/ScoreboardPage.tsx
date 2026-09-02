@@ -43,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +56,7 @@ function filterTeam(
 ): HubUser[] {
   return users.filter((u) => {
     if (u.status !== "active") return false;
+    if (u.role === "display") return false;
     if (audience !== "all" && u.role !== audience) return false;
     if (sector !== "all" && !(u.sectors ?? []).includes(sector)) return false;
     return true;
@@ -64,8 +65,9 @@ function filterTeam(
 
 export default function ScoreboardPage() {
   const users = useUsers();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tv = searchParams.get("tv") === "1";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const tv = location.pathname.startsWith("/tv/scoreboard");
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [monthValue, setMonthValue] = useState(defaultMonth);
@@ -215,9 +217,7 @@ export default function ScoreboardPage() {
     audience === "employee" ? "employees" : audience === "contractor" ? "contractors" : "team";
 
   const openTvView = () => {
-    const next = new URLSearchParams(searchParams);
-    next.set("tv", "1");
-    setSearchParams(next);
+    navigate("/tv/scoreboard");
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
 

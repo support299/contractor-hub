@@ -122,7 +122,15 @@ class HubUserSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get("request")
         if request is not None:
-            from .permissions import user_is_hub_admin
+            from .permissions import user_is_hub_admin, user_is_hub_display
+
+            if user_is_hub_display(request.user):
+                data.pop("jobberId", None)
+                data.pop("ghlId", None)
+                data.pop("suppliesDeduction", None)
+                for key in ("email", "phone", "hireDate", "availableVacationDays"):
+                    data.pop(key, None)
+                return data
 
             if not user_is_hub_admin(request.user):
                 profile = getattr(request.user, "hub_profile", None)

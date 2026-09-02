@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -12,8 +12,6 @@ export default function AdminLayout() {
   const session = useSession();
   const admin = isAdminSession(session);
   const [searchParams] = useSearchParams();
-  const tv =
-    searchParams.get("tv") === "1" && location.pathname.startsWith("/admin/scoreboard");
   const roleLabel = (session?.role || "staff").toUpperCase();
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
@@ -29,33 +27,11 @@ export default function AdminLayout() {
     navigate("/login", { replace: true });
   };
 
-  const exitTvView = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
-    const next = new URLSearchParams(searchParams);
-    next.delete("tv");
-    const search = next.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" });
-  };
-
-  if (tv) {
-    return (
-      <div className="min-h-screen bg-background relative">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="absolute top-3 right-3 z-20 bg-card/90"
-          onClick={exitTvView}
-        >
-          Exit TV view
-        </Button>
-        <main className="min-h-screen p-3 pt-12">
-          <Outlet />
-        </main>
-      </div>
-    );
+  if (
+    searchParams.get("tv") === "1" &&
+    location.pathname.startsWith("/admin/scoreboard")
+  ) {
+    return <Navigate to="/tv/scoreboard" replace />;
   }
 
   return (

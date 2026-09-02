@@ -39,6 +39,19 @@ export function isAdminSession(session: Session | null = getSession()): boolean 
   return session?.role === "admin";
 }
 
+export function isDisplaySession(session: Session | null = getSession()): boolean {
+  return session?.role === "display";
+}
+
+export function homePathForSession(session: Session | null = getSession()): string {
+  if (isDisplaySession(session)) return "/tv/scoreboard";
+  return "/admin/dashboard";
+}
+
+export function canOpenScoreboard(session: Session | null = getSession()): boolean {
+  return isAdminSession(session) || isDisplaySession(session);
+}
+
 export function setAuth(access: string, refresh: string, user: AuthUser) {
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);

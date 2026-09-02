@@ -18,6 +18,7 @@ class HubUser(TimeStampedModel):
         EMPLOYEE = "employee", "Employee"
         CONTRACTOR = "contractor", "Contractor"
         ADMIN = "admin", "Admin"
+        DISPLAY = "display", "Display (TV)"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -85,6 +86,22 @@ class HubUser(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.role})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        user = self.auth_user
+        if not user:
+            return
+        is_admin = self.role == self.Role.ADMIN
+        fields = []
+        if user.is_staff != is_admin:
+            user.is_staff = is_admin
+            fields.append("is_staff")
+        if not is_admin and user.is_superuser:
+            user.is_superuser = False
+            fields.append("is_superuser")
+        if fields:
+            user.save(update_fields=fields)
 
 
 LOCK_IN_POSITION_AMOUNTS = {

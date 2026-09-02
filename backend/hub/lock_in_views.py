@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import HubUser, HubVisit, LockInBonus, PendingLockIn
-from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
+from .permissions import HubAccess, IsAdminRole, user_can_read_scoreboard, user_is_hub_admin
 from .serializers import HubVisitSerializer, LockInBonusSerializer, PendingLockInSerializer
 from .services import lock_in as svc
 
@@ -164,7 +164,7 @@ class HubVisitViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user_is_hub_admin(user):
+        if user_can_read_scoreboard(user):
             return qs
         profile = getattr(user, "hub_profile", None)
         if profile is None:
@@ -210,7 +210,7 @@ class LockInBonusViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        if user_is_hub_admin(user):
+        if user_can_read_scoreboard(user):
             return qs
         profile = getattr(user, "hub_profile", None)
         if profile is None:

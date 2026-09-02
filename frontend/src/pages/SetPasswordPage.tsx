@@ -6,7 +6,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, getAccessToken, getSession, setPassword } from "@/lib/api";
+import { ApiError, getAccessToken, getSession, homePathForSession, setPassword } from "@/lib/api";
 
 export default function SetPasswordPage() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   if (getAccessToken() && getSession()?.userId) {
-    return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to={homePathForSession()} replace />;
   }
 
   const onSubmit = async (e: FormEvent) => {
@@ -29,7 +29,7 @@ export default function SetPasswordPage() {
     try {
       await setPassword(email.trim(), password, confirm);
       toast.success("Password set — you're signed in");
-      navigate("/admin/dashboard", { replace: true });
+      navigate(homePathForSession(), { replace: true });
     } catch (err) {
       const msg =
         err instanceof ApiError

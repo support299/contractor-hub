@@ -26,8 +26,15 @@ from .models import (
     HubTrainingMaterial,
     HubUser,
 )
-from .permissions import HubAccess, IsAdminRole, user_is_hub_admin
+from .permissions import (
+    HubAccess,
+    HubStaffAccess,
+    IsAdminRole,
+    user_is_hub_admin,
+    user_is_hub_display,
+)
 from .staff_access import (
+    SCOREBOARD_READ_SLUGS,
     STAFF_CREATE_BLOCKED_SLUGS,
     filter_leave_approvals_for_staff,
     filter_submissions_for_staff,
@@ -313,6 +320,11 @@ class MeView(APIView):
             return Response(
                 {"detail": "No hub profile linked"}, status=status.HTTP_400_BAD_REQUEST
             )
+        if user_is_hub_display(request.user):
+            return Response(
+                {"detail": "Display accounts cannot update profile."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         ser = MeUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         if "email" in ser.validated_data:
@@ -457,6 +469,8 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         if user_is_hub_admin(self.request.user):
             return qs
+        if user_is_hub_display(self.request.user):
+            return qs.filter(form__slug__in=SCOREBOARD_READ_SLUGS)
         profile = getattr(self.request.user, "hub_profile", None)
         if not profile:
             return qs.none()
@@ -552,7 +566,7 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [HubAccess()]
+            return [HubStaffAccess()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -623,7 +637,7 @@ class NotificationPagination(PageNumberPagination):
 
 class HubNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = HubNotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HubStaffAccess]
     pagination_class = NotificationPagination
 
     def get_queryset(self):
@@ -738,7 +752,7 @@ class HubResourceFolderViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [HubAccess()]
+            return [HubStaffAccess()]
         return [IsAdminRole()]
 
 
@@ -751,7 +765,7 @@ class HubTrainingMaterialViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [HubAccess()]
+            return [HubStaffAccess()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -767,7 +781,7 @@ class HubDocumentViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [HubAccess()]
+            return [HubStaffAccess()]
         return [IsAdminRole()]
 
     def get_queryset(self):

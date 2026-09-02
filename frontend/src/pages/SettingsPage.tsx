@@ -303,6 +303,8 @@ export default function SettingsPage() {
                         className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                           u.role === "admin"
                             ? "bg-purple-100 text-purple-700"
+                            : u.role === "display"
+                            ? "bg-amber-100 text-amber-800"
                             : u.role === "employee"
                             ? "bg-emerald-100 text-emerald-700"
                             : "bg-blue-100 text-blue-700"
@@ -454,8 +456,14 @@ export default function SettingsPage() {
                     <SelectItem value="employee">Employee</SelectItem>
                     <SelectItem value="contractor">Contractor</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="display">Display (office TV)</SelectItem>
                   </SelectContent>
                 </Select>
+                {form.role === "display" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Office TV login: scoreboard only. Cannot open Settings, payroll, or other Hub pages.
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

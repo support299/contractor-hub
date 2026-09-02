@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
-import { getSession, loginByEmail } from "@/lib/api";
+import { getSession, isDisplaySession, loginByEmail } from "@/lib/api";
 import {
   emailFromSearch,
   isGhlEmailLoginEnabled,
@@ -47,7 +47,7 @@ export function GhlEmailAutoLogin({ children }: { children: ReactNode }) {
 
     const session = getSession();
     if (session?.userId && session.email?.toLowerCase() === key) {
-      navigate(stripTo(), { replace: true });
+      navigate(isDisplaySession(session) ? "/tv/scoreboard" : stripTo(), { replace: true });
       setBusy(false);
       return;
     }
@@ -64,7 +64,7 @@ export function GhlEmailAutoLogin({ children }: { children: ReactNode }) {
       try {
         await loginByEmailOnce(email);
         if (!active) return;
-        navigate(stripTo(), { replace: true });
+        navigate(isDisplaySession() ? "/tv/scoreboard" : stripTo(), { replace: true });
       } catch {
         /* password / OTP login stays available */
       } finally {
