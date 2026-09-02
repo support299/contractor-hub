@@ -17,7 +17,7 @@ import {
   type HubForm,
 } from "@/lib/forms-store";
 import { fetchUsers, useSession, type HubUser } from "@/lib/hub-store";
-import { isAdminSession } from "@/lib/api";
+import { ApiError, isAdminSession } from "@/lib/api";
 import { FieldRenderer, isStaticType } from "@/pages/PublicFormPage";
 
 interface Props {
@@ -86,8 +86,8 @@ export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title 
       toast.success("Submitted");
       onOpenChange(false);
       onSubmitted?.();
-    } catch {
-      toast.error("Could not submit. Try again.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not submit. Try again.");
     } finally {
       setSubmitting(false);
     }

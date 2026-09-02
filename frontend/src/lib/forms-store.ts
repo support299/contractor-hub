@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, API_BASE } from "./api";
+import { api, API_BASE, ApiError } from "./api";
 
 export type FormStatus = "active" | "inactive";
 
@@ -177,11 +177,21 @@ export async function submitFormAnswers(
   formId: string,
   answers: Record<string, unknown>,
 ): Promise<FormSubmission> {
-  return api<FormSubmission>("/submissions/", {
-    method: "POST",
-    body: { formId, answers },
-    auth: false,
-  });
+  const body = { formId, answers };
+  try {
+    // Send JWT when present so admin-only records (payroll, absences, …) succeed.
+    return await api<FormSubmission>("/submissions/", { method: "POST", body });
+  } catch (err) {
+    // Stale/invalid session: retry anonymous so public client forms still submit.
+    if (err instanceof ApiError && err.status === 401) {
+      return api<FormSubmission>("/submissions/", {
+        method: "POST",
+        body,
+        auth: false,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function fetchSubmissions(formId: string): Promise<FormSubmission[]> {
@@ -282,9 +292,23 @@ export function useForms() {
 
 /** Form slug for payroll line items — Technician is single-select in UI. */
 export const PAYROLL_RECORDS_SLUG = "new-payroll-records";
+export const LEAVE_FORM_SLUG = "request-time-off";
+
+/** Ops records only admins may insert. Matches backend STAFF_CREATE_BLOCKED_SLUGS. */
+export const ADMIN_ONLY_CREATE_SLUGS = new Set([
+  "new-payroll-records",
+  "new-payroll-periods",
+  "bonus-submissions",
+  "new-absence",
+  "new-efficiency",
+]);
 
 export function isPayrollRecordsSlug(slug: string | null | undefined): boolean {
   return slug === PAYROLL_RECORDS_SLUG;
+}
+
+export function isAdminOnlyCreateSlug(slug: string | null | undefined): boolean {
+  return !!slug && ADMIN_ONLY_CREATE_SLUGS.has(slug);
 }
 
 /** Normalize users-field answers (string or string[]) to a name list. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Check, ChevronsUpDown, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,9 @@ import {
   evaluateCondition,
   fetchFormBySlug,
   fetchOpenPayrolls,
+  isAdminOnlyCreateSlug,
   isPayrollRecordsSlug,
+  LEAVE_FORM_SLUG,
   singleUserName,
   submitFormAnswers,
   uploadFormFile,
@@ -41,11 +43,16 @@ import {
   type PayrollOption,
   type UploadedFile,
 } from "@/lib/forms-store";
-import { fetchPublicFormUsers, type HubUser } from "@/lib/hub-store";
+import { fetchPublicFormUsers, getSession, useSession, type HubUser } from "@/lib/hub-store";
+import { ApiError, isAdminSession } from "@/lib/api";
 import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 
 export default function PublicFormPage() {
   const { slug = "" } = useParams<{ slug: string }>();
+  const session = useSession() ?? getSession();
+  const admin = isAdminSession(session);
+  const staffNameLock =
+    slug === LEAVE_FORM_SLUG && !admin && session?.name ? session.name : undefined;
   const [form, setForm] = useState<HubForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -61,15 +68,23 @@ export default function PublicFormPage() {
 
   useEffect(() => {
     let active = true;
+    setAnswers({});
+    setLoading(true);
     fetchFormBySlug(slug).then((f) => {
       if (!active) return;
       setForm(f);
+      if (staffNameLock && f) {
+        const userField = f.fields.find((x) => x.type === "users");
+        if (userField) {
+          setAnswers({ [userField.id]: [staffNameLock] });
+        }
+      }
       setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, staffNameLock]);
 
   const visibleFields = useMemo(() => {
     if (!form) return [];
@@ -103,8 +118,8 @@ export default function PublicFormPage() {
       await submitFormAnswers(form.id, payload);
       setSubmitted(true);
       toast.success("Submitted, thank you!");
-    } catch {
-      toast.error("Could not submit. Try again.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not submit. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -130,6 +145,35 @@ export default function PublicFormPage() {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">
         This form is not currently accepting responses.
+      </div>
+    );
+  }
+
+  if (isAdminOnlyCreateSlug(slug) && !admin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md text-center space-y-3">
+          <h1 className="text-2xl font-semibold">{form.name}</h1>
+          <p className="text-muted-foreground">
+            Only admins can add these records. Employees and contractors request time off
+            from the calendar or{" "}
+            <Link to={`/forms/${LEAVE_FORM_SLUG}`} className="underline">
+              /forms/{LEAVE_FORM_SLUG}
+            </Link>
+            .
+          </p>
+          {session?.userId ? (
+            <p className="text-sm text-muted-foreground">
+              Signed in as {session.name || session.identifier} ({session.role}).
+            </p>
+          ) : (
+            <Button asChild>
+              <Link to="/login" state={{ from: `/forms/${slug}` }}>
+                Sign in
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
@@ -167,6 +211,7 @@ export default function PublicFormPage() {
               onChange={(v) => setAnswer(f.id, v)}
               users={users}
               formSlug={slug}
+              staffNameLock={staffNameLock}
             />
           ))}
 

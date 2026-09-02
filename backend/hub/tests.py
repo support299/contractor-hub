@@ -883,6 +883,11 @@ class StaffPermissionTests(TestCase):
             slug="request-time-off",
             fields=LEAVE_FIELDS,
         )
+        self.absence = HubForm.objects.create(
+            name="Absence",
+            slug="new-absence",
+            fields=LEAVE_FIELDS,
+        )
         self.mine = HubFormSubmission.objects.create(
             form=self.payroll,
             answers={"u": ["Eli Employee"]},
@@ -979,6 +984,56 @@ class StaffPermissionTests(TestCase):
         res = self.admin_client.post(
             "/api/submissions/",
             {"formId": str(self.payroll.id), "answers": {"u": ["Eli Employee"]}},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+
+    def test_anonymous_cannot_create_absence(self):
+        from rest_framework.test import APIClient
+
+        res = APIClient().post(
+            "/api/submissions/",
+            {
+                "formId": str(self.absence.id),
+                "answers": {
+                    "u": ["Eli Employee"],
+                    "s": "2026-10-01",
+                    "e": "2026-10-01",
+                    "t": "Absent",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_staff_cannot_create_absence(self):
+        res = self.emp_client.post(
+            "/api/submissions/",
+            {
+                "formId": str(self.absence.id),
+                "answers": {
+                    "u": ["Eli Employee"],
+                    "s": "2026-10-01",
+                    "e": "2026-10-01",
+                    "t": "Absent",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_admin_can_create_absence(self):
+        res = self.admin_client.post(
+            "/api/submissions/",
+            {
+                "formId": str(self.absence.id),
+                "answers": {
+                    "u": ["Eli Employee"],
+                    "s": "2026-10-01",
+                    "e": "2026-10-01",
+                    "t": "Absent",
+                },
+            },
             format="json",
         )
         self.assertEqual(res.status_code, 201)
