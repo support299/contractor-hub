@@ -53,7 +53,10 @@ import {
   initialsOf,
 } from "@/lib/dashboard-metrics";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function DashboardPage() {
+  useDocumentTitle("Dashboard");
   const users = useUsers();
   const session = useSession();
   const admin = isAdminSession(session);

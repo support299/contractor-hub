@@ -119,7 +119,10 @@ function fileTypeLabel(name: string, mime: string): string {
 
 type TabKey = "training" | "documents";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function ResourcesPage() {
+  useDocumentTitle("Resources");
   const [tab, setTab] = useState<TabKey>("training");
   const session = useSession();
   const canManage = isAdminSession(session);

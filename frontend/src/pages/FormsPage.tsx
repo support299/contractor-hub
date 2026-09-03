@@ -1,7 +1,9 @@
 import { Toaster } from "@/components/ui/sonner";
 import { FormsSection } from "@/components/admin/FormsSection";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function FormsPage() {
+  useDocumentTitle("Forms");
   return (
     <div className="space-y-8">
       <Toaster />

@@ -214,7 +214,10 @@ function saveTabOrder(order: string[]) {
   }
 }
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function DataPage() {
+  useDocumentTitle("Records");
   const forms = useForms();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tabOrder, setTabOrder] = useState<string[]>(loadTabOrder);

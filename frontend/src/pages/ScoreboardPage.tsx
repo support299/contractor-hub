@@ -63,7 +63,10 @@ function filterTeam(
   });
 }
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function ScoreboardPage() {
+  useDocumentTitle("Scoreboard");
   const users = useUsers();
   const location = useLocation();
   const navigate = useNavigate();

@@ -2,6 +2,10 @@ import { Link, Navigate, Outlet, useLocation, useNavigate, useSearchParams } fro
 import { Logo } from "@/components/Logo";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { NotificationBell } from "@/components/NotificationBell";
+import {
+  QuickEntryHeaderButton,
+  QuickEntryProvider,
+} from "@/components/QuickEntryProvider";
 import { Button } from "@/components/ui/button";
 import { clearAuth, isAdminSession } from "@/lib/api";
 import { useSession } from "@/lib/hub-store";
@@ -15,6 +19,7 @@ export default function AdminLayout() {
   const roleLabel = (session?.role || "staff").toUpperCase();
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
+    { to: "/admin/quick-entry", label: "Quick Entry" },
     ...(admin ? [{ to: "/admin/scoreboard", label: "Scoreboard" }] : []),
     { to: "/admin/payrolls", label: "Payrolls" },
     { to: "/admin/calendar", label: "Calendar" },
@@ -35,7 +40,8 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <QuickEntryProvider>
+      <div className="min-h-screen bg-background flex flex-col">
       <AlertsBanner />
       <header className="border-b bg-card">
         <div className="px-6 py-4 flex items-center justify-between gap-4">
@@ -51,6 +57,7 @@ export default function AdminLayout() {
             ) : null}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <QuickEntryHeaderButton />
             <NotificationBell />
             <Button variant="outline" size="sm" onClick={logout}>
               Sign out
@@ -106,6 +113,7 @@ export default function AdminLayout() {
           <Outlet />
         </main>
       </div>
-    </div>
+      </div>
+    </QuickEntryProvider>
   );
 }

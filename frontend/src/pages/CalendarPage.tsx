@@ -164,7 +164,10 @@ function valueAsArray(v: unknown): string[] {
   return [String(v)];
 }
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function CalendarPage() {
+  useDocumentTitle("Calendar");
   const session = useSession();
   const canApprove = isAdminSession(session);
   const forms = useForms();

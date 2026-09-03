@@ -47,6 +47,8 @@ import { fetchPublicFormUsers, getSession, useSession, type HubUser } from "@/li
 import { ApiError, isAdminSession } from "@/lib/api";
 import { UsersMultiSelect, UsersSingleSelect } from "@/components/UserFieldSelect";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function PublicFormPage() {
   const { slug = "" } = useParams<{ slug: string }>();
   const session = useSession() ?? getSession();
@@ -59,6 +61,8 @@ export default function PublicFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [users, setUsers] = useState<HubUser[]>([]);
+
+  useDocumentTitle(form?.name);
 
   useEffect(() => {
     fetchPublicFormUsers()

@@ -18,6 +18,7 @@ import ResourcesPage from "@/pages/ResourcesPage";
 import DataPage from "@/pages/DataPage";
 import SettingsPage from "@/pages/SettingsPage";
 import FormsPage from "@/pages/FormsPage";
+import QuickEntryPage from "@/pages/QuickEntryPage";
 import FormSubmissionsPage from "@/pages/FormSubmissionsPage";
 import PublicFormPage from "@/pages/PublicFormPage";
 import LoginPage from "@/pages/LoginPage";
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="quick-entry" element={<QuickEntryPage />} />
                 <Route path="payrolls" element={<PayrollsPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="resources" element={<ResourcesPage />} />

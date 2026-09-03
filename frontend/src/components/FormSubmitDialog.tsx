@@ -26,9 +26,30 @@ interface Props {
   onOpenChange: (o: boolean) => void;
   onSubmitted?: () => void;
   title?: string;
+  /** Prefill answers by field label (case-insensitive). */
+  prefillByLabel?: Record<string, unknown>;
 }
 
-export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title }: Props) {
+function answersFromPrefill(form: HubForm, prefill?: Record<string, unknown>) {
+  const next: Record<string, unknown> = {};
+  if (!prefill) return next;
+  for (const [label, value] of Object.entries(prefill)) {
+    const field = form.fields.find(
+      (x) => (x.label ?? "").trim().toLowerCase() === label.trim().toLowerCase(),
+    );
+    if (field) next[field.id] = value;
+  }
+  return next;
+}
+
+export function FormSubmitDialog({
+  slug,
+  open,
+  onOpenChange,
+  onSubmitted,
+  title,
+  prefillByLabel,
+}: Props) {
   const session = useSession();
   const staffNameLock =
     !isAdminSession(session) && session?.name ? session.name : undefined;
@@ -37,23 +58,25 @@ export function FormSubmitDialog({ slug, open, onOpenChange, onSubmitted, title 
   const [users, setUsers] = useState<HubUser[]>([]);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
+  const prefillKey = JSON.stringify(prefillByLabel ?? null);
 
   useEffect(() => {
     if (!open) return;
     setAnswers({});
     setLoading(true);
+    const prefill = prefillKey ? (JSON.parse(prefillKey) as Record<string, unknown>) : undefined;
     Promise.all([fetchFormBySlug(slug), fetchUsers()]).then(([f, u]) => {
       setForm(f);
       setUsers(u);
+      const next = f ? answersFromPrefill(f, prefill) : {};
       if (staffNameLock && f) {
         const userField = f.fields.find((x) => x.type === "users");
-        if (userField) {
-          setAnswers({ [userField.id]: [staffNameLock] });
-        }
+        if (userField) next[userField.id] = [staffNameLock];
       }
+      setAnswers(next);
       setLoading(false);
     });
-  }, [open, slug, staffNameLock]);
+  }, [open, slug, staffNameLock, prefillKey]);
 
   const visibleFields = useMemo(() => {
     if (!form) return [];

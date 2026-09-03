@@ -79,7 +79,10 @@ function matchesFilter(value: unknown, filter: FieldFilter): boolean {
   return !haystack.includes(v);
 }
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function FormSubmissionsPage() {
+  useDocumentTitle("Submissions");
   const { formId = "" } = useParams<{ formId: string }>();
   const [form, setForm] = useState<HubForm | null>(null);
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);

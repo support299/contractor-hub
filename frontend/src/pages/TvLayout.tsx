@@ -3,7 +3,10 @@ import { Button } from "@/components/ui/button";
 import { clearAuth, isAdminSession } from "@/lib/api";
 import { useSession } from "@/lib/hub-store";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function TvLayout() {
+  useDocumentTitle("Scoreboard TV");
   const navigate = useNavigate();
   const session = useSession();
   const admin = isAdminSession(session);

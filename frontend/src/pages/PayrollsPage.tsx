@@ -89,7 +89,10 @@ function fmtMoney(n: number): string {
   });
 }
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function PayrollsPage() {
+  useDocumentTitle("Payrolls");
   const users = useUsers();
   const session = useSession();
   const admin = isAdminSession(session);

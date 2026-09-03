@@ -8,7 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, getAccessToken, getSession, homePathForSession, setPassword } from "@/lib/api";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function SetPasswordPage() {
+  useDocumentTitle("Set Password");
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPasswordValue] = useState("");

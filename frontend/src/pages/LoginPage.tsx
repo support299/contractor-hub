@@ -23,7 +23,10 @@ import {
   verifyOtp,
 } from "@/lib/api";
 
+import { useDocumentTitle } from "@/hooks/use-document-title";
+
 export default function LoginPage() {
+  useDocumentTitle("Sign In");
   const navigate = useNavigate();
   const location = useLocation();
   const from =
