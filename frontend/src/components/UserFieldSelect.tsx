@@ -1,31 +1,10 @@
-import {
-  cloneElement,
-  useEffect,
-  useState,
-  type MouseEvent,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
-import { Check, ChevronsUpDown, UserCircle2, X } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronsUpDown, UserCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import type { HubUser } from "@/lib/hub-store";
 import { cn } from "@/lib/utils";
-import { useForwardLockedScroll } from "@/components/ui/forward-locked-scroll";
 
 export function UserAvatar({
   picture,
@@ -56,7 +35,7 @@ export function UserAvatar({
         className,
       )}
       style={{ width: size, height: size }}
-      aria-label={name}
+      aria-hidden
     >
       <UserCircle2 style={{ width: size * 0.72, height: size * 0.72 }} />
     </div>
@@ -87,132 +66,70 @@ function userByName(users: HubUser[], name: string): Pick<HubUser, "id" | "name"
   return users.find((u) => u.name === name) ?? { id: name, name };
 }
 
-function useMobilePicker() {
-  const [mobile, setMobile] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      (window.matchMedia("(max-width: 767px)").matches ||
-        window.matchMedia("(pointer: coarse)").matches),
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px), (pointer: coarse)");
-    const apply = () =>
-      setMobile(
-        window.matchMedia("(max-width: 767px)").matches ||
-          window.matchMedia("(pointer: coarse)").matches,
-      );
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-  return mobile;
+function filterUsers(users: HubUser[], query: string, extraName?: string) {
+  const q = query.trim().toLowerCase();
+  const list = q
+    ? users.filter(
+        (u) => u.name.toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q),
+      )
+    : users;
+  if (extraName && !list.some((u) => u.name === extraName) && (!q || extraName.toLowerCase().includes(q))) {
+    return { list, orphan: extraName };
+  }
+  return { list, orphan: undefined as string | undefined };
 }
 
-function PickerCommand({ children }: { children: ReactNode }) {
-  const [allowSearch, setAllowSearch] = useState(false);
-  return (
-    <Command
-      disablePointerSelection
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-none"
-    >
-      <CommandInput
-        placeholder="Search"
-        autoFocus={false}
-        readOnly={!allowSearch}
-        inputMode={allowSearch ? "search" : "none"}
-        onPointerDown={() => setAllowSearch(true)}
-      />
-      <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto overscroll-none">
-        {children}
-      </CommandList>
-    </Command>
-  );
-}
-
-function UsersPickerPopover({
-  open,
-  onOpenChange,
-  trigger,
-  title,
+/** Inline panel — stays inside the parent dialog. No portal, so taps cannot close the modal. */
+function UserPickerPanel({
+  query,
+  onQueryChange,
   children,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  trigger: ReactElement<{ onClick?: (e: MouseEvent<HTMLElement>) => void }>;
-  title: string;
+  query: string;
+  onQueryChange: (q: string) => void;
   children: ReactNode;
 }) {
-  const mobile = useMobilePicker();
-  const sheetRef = useForwardLockedScroll<HTMLDivElement>();
-
-  if (mobile) {
-    const triggerEl = cloneElement(trigger, {
-      "aria-expanded": open,
-      onClick: (e: MouseEvent<HTMLElement>) => {
-        trigger.props.onClick?.(e);
-        onOpenChange(!open);
-      },
-    } as Partial<typeof trigger.props> & { "aria-expanded": boolean });
-
-    return (
-      <>
-        {triggerEl}
-        {open
-          ? createPortal(
-              <div className="fixed inset-0 z-[200]">
-                <button
-                  type="button"
-                  className="absolute inset-0 bg-black/50"
-                  aria-label="Close"
-                  onClick={() => onOpenChange(false)}
-                />
-                <div
-                  ref={sheetRef}
-                  className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-2xl border-t bg-background pb-[env(safe-area-inset-bottom)]"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label={title}
-                >
-                  <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-                    <p className="text-sm font-semibold">{title}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0"
-                      aria-label="Close"
-                      onClick={() => onOpenChange(false)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <PickerCommand>{children}</PickerCommand>
-                  </div>
-                </div>
-              </div>,
-              document.body,
-            )
-          : null}
-      </>
-    );
-  }
-
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="bottom"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        onCloseAutoFocus={(e) => e.preventDefault()}
-        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] min-w-0 p-0 overflow-hidden"
+    <div className="rounded-md border bg-popover overflow-hidden">
+      <div className="p-2 border-b">
+        <Input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
+          placeholder="Search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+      <div
+        className="max-h-60 overflow-y-auto overscroll-contain touch-pan-y"
+        data-scroll-lock-scrollable=""
+        onWheel={(e) => e.stopPropagation()}
       >
-        <div className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] flex-col">
-          <PickerCommand>{children}</PickerCommand>
-        </div>
-      </PopoverContent>
-    </Popover>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function UserPickButton({
+  children,
+  onPick,
+}: {
+  children: ReactNode;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center px-3 py-2 hover:bg-accent text-left"
+      onClick={onPick}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -234,67 +151,64 @@ export function UsersSingleSelect({
   className,
 }: UsersSingleSelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = value ? userByName(users, value) : null;
+  const { list, orphan } = useMemo(
+    () => filterUsers(users, query, value || undefined),
+    [users, query, value],
+  );
 
   if (users.length === 0 && !value) {
     return <p className="text-sm text-muted-foreground">No users available.</p>;
   }
 
+  const pick = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setQuery("");
+  };
+
   return (
-    <UsersPickerPopover
-      open={open}
-      onOpenChange={setOpen}
-      title={placeholder}
-      trigger={
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn(
-            "w-full justify-between h-auto min-h-10 py-1.5 px-2",
-            compact && "min-h-8 py-1",
-            className,
-          )}
-        >
-          {selected ? (
-            <UserFieldRow user={selected} variant="trigger" />
-          ) : (
-            <span className="text-muted-foreground text-sm">{placeholder}</span>
-          )}
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
-        </Button>
-      }
-    >
-      <CommandEmpty>No users found.</CommandEmpty>
-      <CommandGroup>
-        {users.map((u) => (
-          <CommandItem
-            key={u.id}
-            value={`${u.name} ${u.email ?? ""}`}
-            onSelect={() => {
-              onChange(u.name);
-              setOpen(false);
-            }}
-            className="items-center py-2 px-3 [&_svg]:size-auto"
-          >
-            <UserFieldRow user={u} />
-          </CommandItem>
-        ))}
-        {value && !users.some((u) => u.name === value) && (
-          <CommandItem
-            value={value}
-            onSelect={() => {
-              onChange(value);
-              setOpen(false);
-            }}
-            className="items-center py-2 px-3 [&_svg]:size-auto"
-          >
-            <UserFieldRow user={{ name: value }} />
-          </CommandItem>
+    <div className="space-y-2">
+      <Button
+        type="button"
+        variant="outline"
+        aria-expanded={open}
+        className={cn(
+          "w-full justify-between h-auto min-h-10 py-1.5 px-2",
+          compact && "min-h-8 py-1",
+          className,
         )}
-      </CommandGroup>
-    </UsersPickerPopover>
+        onClick={() => setOpen((v) => !v)}
+      >
+        {selected ? (
+          <UserFieldRow user={selected} variant="trigger" />
+        ) : (
+          <span className="text-muted-foreground text-sm">{placeholder}</span>
+        )}
+        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+      </Button>
+      {open ? (
+        <UserPickerPanel query={query} onQueryChange={setQuery}>
+          {list.length === 0 && !orphan ? (
+            <p className="px-3 py-6 text-sm text-center text-muted-foreground">No users found.</p>
+          ) : (
+            <>
+              {list.map((u) => (
+                <UserPickButton key={u.id} onPick={() => pick(u.name)}>
+                  <UserFieldRow user={u} />
+                </UserPickButton>
+              ))}
+              {orphan ? (
+                <UserPickButton onPick={() => pick(orphan)}>
+                  <UserFieldRow user={{ name: orphan }} />
+                </UserPickButton>
+              ) : null}
+            </>
+          )}
+        </UserPickerPanel>
+      ) : null}
+    </div>
   );
 }
 
@@ -314,6 +228,8 @@ export function UsersMultiSelect({
   className,
 }: UsersMultiSelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const { list } = useMemo(() => filterUsers(users, query), [users, query]);
 
   if (users.length === 0 && value.length === 0) {
     return <p className="text-sm text-muted-foreground">No users available.</p>;
@@ -325,74 +241,48 @@ export function UsersMultiSelect({
   };
 
   return (
-    <UsersPickerPopover
-      open={open}
-      onOpenChange={setOpen}
-      title="Select users"
-      trigger={
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("w-full justify-between h-auto min-h-10 py-1.5", compact && "min-h-8 py-1", className)}
-        >
-          <div className="flex flex-wrap gap-1 items-center min-w-0">
-            {value.length === 0 ? (
-              <span className="text-muted-foreground">Select users…</span>
-            ) : (
-              value.map((name) => {
-                const u = userByName(users, name);
-                return (
-                  <Badge key={name} variant="secondary" className="gap-1.5 pl-1 pr-1.5">
-                    <UserAvatar picture={u.picture} name={name} size={18} className="rounded-sm" />
-                    {name}
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggle(name);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggle(name);
-                        }
-                      }}
-                      className="hover:text-destructive cursor-pointer inline-flex"
-                    >
-                      <X className="h-3 w-3" />
-                    </span>
-                  </Badge>
-                );
-              })
-            )}
-          </div>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
-        </Button>
-      }
-    >
-      <CommandEmpty>No users found.</CommandEmpty>
-      <CommandGroup>
-        {users.map((u) => {
-          const selected = value.includes(u.name);
-          return (
-            <CommandItem
-              key={u.id}
-              value={`${u.name} ${u.email ?? ""}`}
-              onSelect={() => toggle(u.name)}
-              className="items-center py-2 px-3 [&_svg]:size-auto"
-            >
-              <Check
-                className={`mr-2 h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`}
-              />
-              <UserFieldRow user={u} />
-            </CommandItem>
-          );
-        })}
-      </CommandGroup>
-    </UsersPickerPopover>
+    <div className="space-y-2">
+      <Button
+        type="button"
+        variant="outline"
+        aria-expanded={open}
+        className={cn("w-full justify-between h-auto min-h-10 py-1.5", compact && "min-h-8 py-1", className)}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex flex-wrap gap-1 items-center min-w-0">
+          {value.length === 0 ? (
+            <span className="text-muted-foreground">Select users…</span>
+          ) : (
+            value.map((name) => {
+              const u = userByName(users, name);
+              return (
+                <Badge key={name} variant="secondary" className="gap-1.5 pl-1 pr-1.5 pointer-events-none">
+                  <UserAvatar picture={u.picture} name={name} size={18} className="rounded-sm" />
+                  {name}
+                </Badge>
+              );
+            })
+          )}
+        </div>
+        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+      </Button>
+      {open ? (
+        <UserPickerPanel query={query} onQueryChange={setQuery}>
+          {list.length === 0 ? (
+            <p className="px-3 py-6 text-sm text-center text-muted-foreground">No users found.</p>
+          ) : (
+            list.map((u) => {
+              const selected = value.includes(u.name);
+              return (
+                <UserPickButton key={u.id} onPick={() => toggle(u.name)}>
+                  <Check className={`mr-2 h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
+                  <UserFieldRow user={u} />
+                </UserPickButton>
+              );
+            })
+          )}
+        </UserPickerPanel>
+      ) : null}
+    </div>
   );
 }
