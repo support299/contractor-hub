@@ -25,11 +25,11 @@ function clampScroll(el: HTMLElement, delta: number) {
 }
 
 /**
- * Dialog scroll-lock preventDefaults wheel/touch on portaled menus.
- * Native non-passive listeners restore scrolling (scrollbar drag already worked).
+ * Dialog scroll-lock blocks wheel on portaled menus (scrollbar still worked).
+ * Mouse wheel is forwarded in JS. Touch is left native — JS scrollTop + iOS
+ * momentum fighting is what made the list flicker.
  */
 export function useForwardLockedScroll<T extends HTMLElement>(): RefCallback<T> {
-  const lastY = useRef<number | null>(null);
   const cleanup = useRef<(() => void) | null>(null);
 
   return useCallback((node: T | null) => {
@@ -46,28 +46,17 @@ export function useForwardLockedScroll<T extends HTMLElement>(): RefCallback<T> 
       e.stopPropagation();
     };
 
-    const onTouchStart = (e: TouchEvent) => {
-      lastY.current = e.touches[0]?.clientY ?? null;
-    };
-
     const onTouchMove = (e: TouchEvent) => {
-      if (lastY.current == null) return;
       if (!node.contains(e.target as Node)) return;
-      const el = scrollableAncestor(e.target, node);
-      const y = e.touches[0]?.clientY;
-      if (!el || y == null) return;
-      const dy = lastY.current - y;
-      lastY.current = y;
-      if (!clampScroll(el, dy)) return;
-      e.preventDefault();
+      if (!scrollableAncestor(e.target, node)) return;
+      // Keep the dialog lock from seeing this; do not preventDefault or
+      // write scrollTop — native overflow handles finger pan + momentum.
       e.stopPropagation();
     };
 
-    node.addEventListener("touchstart", onTouchStart, { passive: true });
     window.addEventListener("wheel", onWheel, { capture: true, passive: false });
-    window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+    window.addEventListener("touchmove", onTouchMove, { capture: true, passive: true });
     cleanup.current = () => {
-      node.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("wheel", onWheel, { capture: true });
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
     };

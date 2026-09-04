@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Check, ChevronsUpDown, UserCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ export function UserAvatar({
         alt=""
         className={cn("shrink-0 rounded-lg object-cover object-top bg-muted", className)}
         style={{ width: size, height: size }}
+        draggable={false}
       />
     );
   }
@@ -77,20 +78,6 @@ function userByName(users: HubUser[], name: string): Pick<HubUser, "id" | "name"
   return users.find((u) => u.name === name) ?? { id: name, name };
 }
 
-function useCoarsePointer() {
-  const [coarse, setCoarse] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(pointer: coarse)");
-    const apply = () => setCoarse(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
-  return coarse;
-}
-
 function UsersPickerPopover({
   open,
   onOpenChange,
@@ -102,24 +89,23 @@ function UsersPickerPopover({
   trigger: ReactNode;
   children: ReactNode;
 }) {
-  const coarse = useCoarsePointer();
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       {trigger}
       <PopoverContent
         align="start"
-        collisionPadding={12}
-        onOpenAutoFocus={(e) => {
-          if (coarse) e.preventDefault();
-        }}
-        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] min-w-0 p-0 overflow-hidden"
+        side="bottom"
+        avoidCollisions={false}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-1rem)] min-w-0 p-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none"
       >
         <Command
-          disablePointerSelection={coarse}
+          disablePointerSelection
           className="flex h-auto max-h-[min(24rem,var(--radix-popover-content-available-height))] flex-col overflow-hidden"
         >
-          <CommandInput placeholder="Search" />
-          <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
+          <CommandInput placeholder="Search" autoFocus={false} />
+          <CommandList className="max-h-none min-h-0 flex-1 overflow-y-auto overscroll-none touch-pan-y">
             {children}
           </CommandList>
         </Command>

@@ -124,7 +124,7 @@ export function FormSubmitDialog({
           {form?.description && <DialogDescription>{form.description}</DialogDescription>}
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto -mx-6 px-6">
+        <div className="flex-1 overflow-y-auto overscroll-none -mx-6 px-6">
           {loading ? (
             <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
           ) : !form ? (
