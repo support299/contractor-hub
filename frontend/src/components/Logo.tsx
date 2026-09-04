@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 const BRAND_NAME = "Clean on the Go";
 
@@ -8,7 +9,10 @@ export function Logo({ className }: { className?: string }) {
   if (broken) {
     return (
       <span
-        className={`inline-flex items-center font-bold text-emerald-700 leading-none ${className ?? "h-12"}`}
+        className={cn(
+          "inline-flex items-center font-bold text-emerald-700 leading-tight truncate",
+          className ?? "h-12",
+        )}
       >
         {BRAND_NAME}
       </span>
@@ -19,7 +23,7 @@ export function Logo({ className }: { className?: string }) {
     <img
       src="/logo.png"
       alt={BRAND_NAME}
-      className={className ?? "h-12 w-auto"}
+      className={cn("object-contain object-left", className ?? "h-12 w-auto")}
       onError={() => setBroken(true)}
     />
   );

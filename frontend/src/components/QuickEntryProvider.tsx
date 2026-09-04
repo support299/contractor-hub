@@ -95,9 +95,9 @@ export function QuickEntryHeaderButton() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className="px-2 sm:px-3 shrink-0" aria-label="Quick Entry">
           <Plus className="h-4 w-4" />
-          Quick Entry
+          <span className="hidden sm:inline">Quick Entry</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
