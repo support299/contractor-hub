@@ -44,7 +44,13 @@ function normalize(raw: Record<string, unknown>): LockInBonusRow {
   };
 }
 
+/** Eligible lock-in payout (mapped positions only). Unmapped roles get amount 0. */
+export function hasLockInPayout(row: LockInBonusRow): boolean {
+  return row.amount > 0;
+}
+
 export function isConfirmedLockIn(row: LockInBonusRow): boolean {
+  if (!hasLockInPayout(row)) return false;
   return (
     row.bonusConfirmed ||
     row.status === "confirmed" ||
@@ -52,9 +58,13 @@ export function isConfirmedLockIn(row: LockInBonusRow): boolean {
   );
 }
 
-/** Open pipeline — waiting for first recurring visit. Expired rows are excluded. */
+/** Open pipeline — waiting for first recurring visit. Expired / $0 rows excluded. */
 export function isPendingLockIn(row: LockInBonusRow): boolean {
-  return row.status === "in_process" && !row.bonusConfirmed;
+  return (
+    hasLockInPayout(row) &&
+    row.status === "in_process" &&
+    !row.bonusConfirmed
+  );
 }
 
 export function lockInEventAt(row: LockInBonusRow): string {
