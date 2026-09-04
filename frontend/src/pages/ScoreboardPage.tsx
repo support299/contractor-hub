@@ -15,7 +15,9 @@ import {
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
+  isPendingLockIn,
   lockInEventAt,
+  pendingLockInEventAt,
   rangeToVisitQuery,
   type LockInBonusRow,
   type VisitSummary,
@@ -173,12 +175,20 @@ export default function ScoreboardPage() {
     [nameSet, reviewData, prevRange],
   );
 
+  const pendingLockIns = useMemo(() => {
+    return lockIns
+      .filter((row) => isPendingLockIn(row) && idSet.has(row.technician))
+      .sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
+  }, [lockIns, idSet]);
+
   const periodLockIns = useMemo(() => {
-    return lockIns.filter((row) => {
-      if (!isConfirmedLockIn(row)) return false;
-      if (!idSet.has(row.technician)) return false;
-      return dateInRange(lockInEventAt(row), range);
-    });
+    return lockIns
+      .filter((row) => {
+        if (!isConfirmedLockIn(row)) return false;
+        if (!idSet.has(row.technician)) return false;
+        return dateInRange(lockInEventAt(row), range);
+      })
+      .sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
   }, [lockIns, idSet, range]);
   const prevLockIns = useMemo(() => {
     return lockIns.filter((row) => {
@@ -333,7 +343,13 @@ export default function ScoreboardPage() {
             label="Lock-ins"
             value={String(periodLockIns.length)}
             delta={formatMomDelta(periodLockIns.length, prevLockIns.length, "number")}
-            sub={periodLockIns.length ? formatMoney(lockInAmount) : "Confirmed this month"}
+            sub={
+              pendingLockIns.length
+                ? `${formatMoney(lockInAmount)} · ${pendingLockIns.length} pending`
+                : periodLockIns.length
+                  ? formatMoney(lockInAmount)
+                  : "Confirmed this month"
+            }
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
         </div>
@@ -447,31 +463,49 @@ export default function ScoreboardPage() {
 
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
+                <Lock className="h-4 w-4 text-amber-600" />
+                <h3 className="font-semibold">Pending lock-ins</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                In process — moves to confirmed after the first recurring visit.
+              </p>
+              {pendingLockIns.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No pending lock-ins.</p>
+              ) : (
+                <ul className="space-y-2 max-h-[28vh] overflow-y-auto">
+                  {pendingLockIns.slice(0, 30).map((row) => (
+                    <LockInListRow
+                      key={row.id}
+                      row={row}
+                      when={pendingLockInEventAt(row)}
+                      badge="Pending"
+                      showTech
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
                 <Lock className="h-4 w-4 text-emerald-600" />
                 <h3 className="font-semibold">Confirmed lock-ins</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                From Hub lock-in bonuses for this month and filter.
+                Confirmed this month for the current filter.
               </p>
               {periodLockIns.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">No confirmed lock-ins.</p>
               ) : (
                 <ul className="space-y-2 max-h-[28vh] overflow-y-auto">
                   {periodLockIns.slice(0, 20).map((row) => (
-                    <li key={row.id} className="flex items-start justify-between gap-2 text-sm">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{row.clientName || "Client"}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {row.technicianName}
-                          {lockInEventAt(row)
-                            ? ` · ${format(new Date(lockInEventAt(row)), "LLL d")}`
-                            : ""}
-                        </p>
-                      </div>
-                      <span className="font-semibold whitespace-nowrap">
-                        {formatMoney(row.amount)}
-                      </span>
-                    </li>
+                    <LockInListRow
+                      key={row.id}
+                      row={row}
+                      when={lockInEventAt(row)}
+                      badge="Confirmed"
+                      showTech
+                    />
                   ))}
                 </ul>
               )}
@@ -488,6 +522,46 @@ export default function ScoreboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LockInListRow({
+  row,
+  when,
+  badge,
+  showTech,
+}: {
+  row: LockInBonusRow;
+  when: string;
+  badge: "Pending" | "Confirmed";
+  showTech?: boolean;
+}) {
+  const badgeClass =
+    badge === "Pending"
+      ? "bg-amber-100 text-amber-800"
+      : "bg-emerald-100 text-emerald-800";
+  const meta = [
+    showTech ? row.technicianName : "",
+    row.frequency,
+    when ? format(new Date(when), "LLL d") : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <li className="flex items-start justify-between gap-2 text-sm">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="font-medium truncate">{row.clientName || "Client"}</p>
+          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${badgeClass}`}>
+            {badge}
+          </span>
+        </div>
+        {meta ? (
+          <p className="text-xs text-muted-foreground truncate">{meta}</p>
+        ) : null}
+      </div>
+      <span className="font-semibold whitespace-nowrap">{formatMoney(row.amount)}</span>
+    </li>
   );
 }
 

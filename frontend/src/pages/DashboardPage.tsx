@@ -31,7 +31,9 @@ import {
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
+  isPendingLockIn,
   lockInEventAt,
+  pendingLockInEventAt,
   rangeToVisitQuery,
   type LockInBonusRow,
   type VisitSummary,
@@ -186,13 +188,22 @@ export default function DashboardPage() {
   const efficiencyBadge =
     efficiency === 100 ? "Perfect" : efficiency >= 80 ? "Above Avg" : "Needs Work";
 
+  const pendingLockIns = useMemo(() => {
+    if (!selected) return [];
+    return lockIns
+      .filter((row) => isPendingLockIn(row) && row.technician === selected.id)
+      .sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
+  }, [lockIns, selected]);
+
   const periodLockIns = useMemo(() => {
     if (!selected) return [];
-    return lockIns.filter((row) => {
-      if (!isConfirmedLockIn(row)) return false;
-      if (row.technician !== selected.id) return false;
-      return dateInRange(lockInEventAt(row), range);
-    });
+    return lockIns
+      .filter((row) => {
+        if (!isConfirmedLockIn(row)) return false;
+        if (row.technician !== selected.id) return false;
+        return dateInRange(lockInEventAt(row), range);
+      })
+      .sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
   }, [lockIns, selected, range]);
   const lockInAmount = periodLockIns.reduce((a, r) => a + r.amount, 0);
 
@@ -327,7 +338,13 @@ export default function DashboardPage() {
           <StatCard
             label="Lock-ins"
             value={String(periodLockIns.length)}
-            sub={periodLockIns.length ? formatMoney(lockInAmount) : "Confirmed in this period"}
+            sub={
+              pendingLockIns.length
+                ? `${formatMoney(lockInAmount)} · ${pendingLockIns.length} pending`
+                : periodLockIns.length
+                  ? formatMoney(lockInAmount)
+                  : "Confirmed in this period"
+            }
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
         </div>
@@ -464,6 +481,49 @@ export default function DashboardPage() {
           <div className="space-y-6">
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
+                <Lock className="h-4 w-4 text-amber-600" />
+                <h3 className="font-semibold">Pending lock-ins</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                In process — moves to confirmed after the first recurring visit.
+              </p>
+              {pendingLockIns.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No pending lock-ins.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {pendingLockIns.map((row) => {
+                    const when = pendingLockInEventAt(row);
+                    const meta = [
+                      row.frequency,
+                      when ? format(new Date(when), "LLL d, y") : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <li key={row.id} className="flex items-start justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="font-medium truncate">{row.clientName || "Client"}</p>
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800">
+                              Pending
+                            </span>
+                          </div>
+                          {meta ? (
+                            <p className="text-xs text-muted-foreground">{meta}</p>
+                          ) : null}
+                        </div>
+                        <span className="font-semibold whitespace-nowrap">
+                          {formatMoney(row.amount)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
                 <Lock className="h-4 w-4 text-emerald-600" />
                 <h3 className="font-semibold">Confirmed lock-ins</h3>
               </div>
@@ -474,17 +534,33 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground italic">No confirmed lock-ins.</p>
               ) : (
                 <ul className="space-y-2">
-                  {periodLockIns.map((row) => (
-                    <li key={row.id} className="flex items-start justify-between gap-2 text-sm">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{row.clientName || "Client"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {lockInEventAt(row) ? format(new Date(lockInEventAt(row)), "LLL d, y") : ""}
-                        </p>
-                      </div>
-                      <span className="font-semibold whitespace-nowrap">{formatMoney(row.amount)}</span>
-                    </li>
-                  ))}
+                  {periodLockIns.map((row) => {
+                    const when = lockInEventAt(row);
+                    const meta = [
+                      row.frequency,
+                      when ? format(new Date(when), "LLL d, y") : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <li key={row.id} className="flex items-start justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="font-medium truncate">{row.clientName || "Client"}</p>
+                            <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                              Confirmed
+                            </span>
+                          </div>
+                          {meta ? (
+                            <p className="text-xs text-muted-foreground">{meta}</p>
+                          ) : null}
+                        </div>
+                        <span className="font-semibold whitespace-nowrap">
+                          {formatMoney(row.amount)}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

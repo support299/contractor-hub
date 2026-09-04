@@ -582,6 +582,7 @@ class PendingLockInSerializer(serializers.ModelSerializer):
 class LockInBonusSerializer(serializers.ModelSerializer):
     technician_name = serializers.CharField(source="technician.name", read_only=True)
     client_name = serializers.CharField(source="pending.client_name", read_only=True)
+    frequency = serializers.CharField(source="pending.frequency", read_only=True)
 
     class Meta:
         model = LockInBonus
@@ -591,6 +592,7 @@ class LockInBonusSerializer(serializers.ModelSerializer):
             "technician",
             "technician_name",
             "client_name",
+            "frequency",
             "bonus_type",
             "status",
             "amount",

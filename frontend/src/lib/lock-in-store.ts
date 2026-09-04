@@ -5,9 +5,11 @@ export type LockInBonusRow = {
   technician: string;
   technicianName: string;
   clientName: string;
+  frequency: string;
   status: string;
   amount: number;
   bonusConfirmed: boolean;
+  inProcessDate: string | null;
   confirmedDate: string | null;
   createdAt: string;
 };
@@ -28,9 +30,13 @@ function normalize(raw: Record<string, unknown>): LockInBonusRow {
     technician: str(raw.technician),
     technicianName: str(raw.technician_name ?? raw.technicianName),
     clientName: str(raw.client_name ?? raw.clientName),
+    frequency: str(raw.frequency),
     status: str(raw.status),
     amount: num(raw.amount),
     bonusConfirmed: Boolean(raw.bonus_confirmed ?? raw.bonusConfirmed),
+    inProcessDate: (raw.in_process_date ?? raw.inProcessDate)
+      ? str(raw.in_process_date ?? raw.inProcessDate)
+      : null,
     confirmedDate: (raw.confirmed_date ?? raw.confirmedDate)
       ? str(raw.confirmed_date ?? raw.confirmedDate)
       : null,
@@ -46,8 +52,17 @@ export function isConfirmedLockIn(row: LockInBonusRow): boolean {
   );
 }
 
+/** Open pipeline — waiting for first recurring visit. Expired rows are excluded. */
+export function isPendingLockIn(row: LockInBonusRow): boolean {
+  return row.status === "in_process" && !row.bonusConfirmed;
+}
+
 export function lockInEventAt(row: LockInBonusRow): string {
   return row.confirmedDate || row.createdAt;
+}
+
+export function pendingLockInEventAt(row: LockInBonusRow): string {
+  return row.inProcessDate || row.createdAt;
 }
 
 export async function fetchLockInBonuses(): Promise<LockInBonusRow[]> {
