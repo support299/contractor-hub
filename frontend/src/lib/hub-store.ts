@@ -93,7 +93,7 @@ export async function fetchPublicFormUsers(): Promise<HubUser[]> {
     name: String(u.name ?? ""),
     email: "",
     phone: "",
-    role: "employee" as Role,
+    role: (u.role as Role) || "employee",
     status: "active" as UserStatus,
     sectors: [],
     picture: (u.picture as string) || undefined,

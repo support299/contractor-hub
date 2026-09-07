@@ -48,6 +48,7 @@ import {
   isStaticField,
   newField,
   normalizeUserNames,
+  selectableUsers,
   singleUserName,
   updateForm,
   updateSubmission,
@@ -1399,7 +1400,7 @@ function Cell({ field, value, users, onChange, singleUserSelect }: CellProps) {
       );
     }
     case "users": {
-      const active = users.filter((u) => u.status === "active");
+      const active = selectableUsers(users, field);
       if (singleUserSelect) {
         const names = normalizeUserNames(value);
         const current = singleUserName(value);

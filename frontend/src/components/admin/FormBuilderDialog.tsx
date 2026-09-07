@@ -27,6 +27,7 @@ import {
   Plus,
   Star,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   FIELD_TYPE_LABELS,
@@ -38,12 +39,16 @@ import {
   slugify,
   uploadFormFile,
   useForms,
+  USER_FIELD_ROLE_OPTIONS,
   type FieldType,
   type FormField,
   type FormStatus,
   type HubForm,
 } from "@/lib/forms-store";
+import { fetchUsers, type HubUser } from "@/lib/hub-store";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 type Draft = {
   name: string;
@@ -752,6 +757,10 @@ function FieldEditor({
             </div>
           )}
 
+          {field.type === "users" && (
+            <UsersConfig field={field} onChange={onChange} />
+          )}
+
           {field.type === "payrolls" && (
             <PayrollsConfig field={field} onChange={onChange} />
           )}
@@ -962,6 +971,135 @@ function ConditionEditor({ field, allFields, index, onChange }: ConditionEditorP
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface UsersConfigProps {
+  field: FormField;
+  onChange: (patch: Partial<FormField>) => void;
+}
+
+function UsersConfig({ field, onChange }: UsersConfigProps) {
+  const [users, setUsers] = useState<HubUser[]>([]);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    fetchUsers()
+      .then((list) => setUsers(list.filter((u) => u.status === "active")))
+      .catch(() => setUsers([]));
+  }, []);
+
+  const excludeIds = field.excludeUserIds ?? [];
+  const excludeRoles = field.excludeRoles ?? [];
+  const q = query.trim().toLowerCase();
+  const visibleUsers = users.filter((u) => {
+    if (!q) return true;
+    return (
+      u.name.toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q)
+    );
+  });
+  const hiddenPeople = users.filter((u) => excludeIds.includes(u.id));
+
+  const toggleRole = (role: (typeof USER_FIELD_ROLE_OPTIONS)[number]["value"]) => {
+    const next = excludeRoles.includes(role)
+      ? excludeRoles.filter((r) => r !== role)
+      : [...excludeRoles, role];
+    onChange({ excludeRoles: next });
+  };
+
+  const toggleUser = (id: string) => {
+    const next = excludeIds.includes(id)
+      ? excludeIds.filter((x) => x !== id)
+      : [...excludeIds, id];
+    onChange({ excludeUserIds: next });
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-dashed p-3 bg-background">
+      <div>
+        <Label className="text-xs font-medium">Hide from this selection</Label>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Hidden people do not appear in this picker on the public form, in
+          submissions, or in the data grid.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">Hide whole roles</Label>
+        <div className="flex flex-wrap gap-3">
+          {USER_FIELD_ROLE_OPTIONS.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex items-center gap-1.5 text-sm cursor-pointer"
+            >
+              <Checkbox
+                checked={excludeRoles.includes(opt.value)}
+                onCheckedChange={() => toggleRole(opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {hiddenPeople.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {hiddenPeople.map((u) => (
+            <Badge key={u.id} variant="secondary" className="gap-1 pr-1">
+              {u.name}
+              <button
+                type="button"
+                className="rounded-sm p-0.5 hover:bg-muted"
+                aria-label={`Show ${u.name}`}
+                onClick={() => toggleUser(u.id)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">Hide specific people</Label>
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name…"
+          className="h-8"
+        />
+        <div className="max-h-44 overflow-y-auto rounded-md border bg-muted/20 divide-y">
+          {visibleUsers.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-center text-muted-foreground">
+              {users.length === 0 ? "No users loaded." : "No match."}
+            </p>
+          ) : (
+            visibleUsers.map((u) => {
+              const hiddenByRole = !!u.role && excludeRoles.includes(u.role);
+              const hiddenById = excludeIds.includes(u.id);
+              return (
+                <label
+                  key={u.id}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer ${
+                    hiddenByRole ? "opacity-60" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <Checkbox
+                    checked={hiddenById || hiddenByRole}
+                    disabled={hiddenByRole}
+                    onCheckedChange={() => toggleUser(u.id)}
+                  />
+                  <span className="min-w-0 truncate flex-1">{u.name}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                    {hiddenByRole ? `hidden (${u.role})` : u.role}
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }

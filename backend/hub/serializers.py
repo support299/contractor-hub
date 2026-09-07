@@ -150,11 +150,11 @@ class HubUserSerializer(serializers.ModelSerializer):
 
 
 class HubUserDirectorySerializer(serializers.ModelSerializer):
-    """Public form picker: names and photos only."""
+    """Public form picker: names, photos, and role (so forms can hide admins)."""
 
     class Meta:
         model = HubUser
-        fields = ["id", "name", "picture"]
+        fields = ["id", "name", "picture", "role"]
         read_only_fields = fields
 
 

@@ -514,7 +514,8 @@ class PublicUserDirectoryTests(TestCase):
         row = res.data[0]
         self.assertEqual(row["name"], "Active Tech")
         self.assertEqual(row["picture"], "https://example.com/a.jpg")
-        self.assertEqual(set(row.keys()), {"id", "name", "picture"})
+        self.assertEqual(set(row.keys()), {"id", "name", "picture", "role"})
+        self.assertEqual(row["role"], HubUser.Role.EMPLOYEE)
         self.assertNotIn("email", row)
         self.assertNotIn("regularRate", row)
 
@@ -523,6 +524,47 @@ class PublicUserDirectoryTests(TestCase):
 
         res = APIClient().get("/api/users/")
         self.assertEqual(res.status_code, 401)
+
+
+class FormUserExcludePersistTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Boss",
+            email="boss-exclude@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+
+    def test_users_field_keeps_exclude_lists(self):
+        res = self.client.post(
+            "/api/forms/",
+            {
+                "name": "Feedback",
+                "slug": "how-are-we-doing-exclude-test",
+                "fields": [
+                    {
+                        "id": "u",
+                        "type": "users",
+                        "label": "Technician",
+                        "excludeUserIds": [str(self.admin.id)],
+                        "excludeRoles": ["admin"],
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        field = res.data["fields"][0]
+        self.assertEqual(field["excludeRoles"], ["admin"])
+        self.assertEqual(field["excludeUserIds"], [str(self.admin.id)])
 
 
 TIPS_FIELDS = [

@@ -35,6 +35,7 @@ import {
   isAdminOnlyCreateSlug,
   isPayrollRecordsSlug,
   LEAVE_FORM_SLUG,
+  selectableUsers,
   singleUserName,
   submitFormAnswers,
   uploadFormFile,
@@ -441,7 +442,7 @@ export function FieldRenderer({ field, value, onChange, users, formSlug, staffNa
           </div>
         );
       }
-      const activeUsers = users.filter((u) => u.status === "active");
+      const activeUsers = selectableUsers(users, field);
       if (isPayrollRecordsSlug(formSlug)) {
         const current = singleUserName(value);
         return (

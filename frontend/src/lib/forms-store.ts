@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, API_BASE, ApiError } from "./api";
+import type { Role } from "./hub-store";
 
 export type FormStatus = "active" | "inactive";
 
@@ -88,6 +89,10 @@ export interface FormField {
   sourceFormId?: string;
   labelFieldId?: string;
   statusFieldId?: string;
+  /** Hub user ids hidden from this Users field picker. */
+  excludeUserIds?: string[];
+  /** Roles hidden from this Users field picker (e.g. admin on clean/feedback). */
+  excludeRoles?: Role[];
 }
 
 export interface UploadedFile {
@@ -309,6 +314,28 @@ export function isPayrollRecordsSlug(slug: string | null | undefined): boolean {
 
 export function isAdminOnlyCreateSlug(slug: string | null | undefined): boolean {
   return !!slug && ADMIN_ONLY_CREATE_SLUGS.has(slug);
+}
+
+export const USER_FIELD_ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "admin", label: "Admin" },
+  { value: "display", label: "Display (TV)" },
+  { value: "contractor", label: "Contractor" },
+  { value: "employee", label: "Employee" },
+];
+
+/** Active users allowed in a Users field picker (respects hide-by-role / hide-by-person). */
+export function selectableUsers<T extends { id: string; status?: string; role?: string }>(
+  users: T[],
+  field?: Pick<FormField, "excludeUserIds" | "excludeRoles"> | null,
+): T[] {
+  const ids = new Set((field?.excludeUserIds ?? []).map(String));
+  const roles = new Set(field?.excludeRoles ?? []);
+  return users.filter((u) => {
+    if ((u.status ?? "active") !== "active") return false;
+    if (ids.has(String(u.id))) return false;
+    if (u.role && roles.has(u.role as Role)) return false;
+    return true;
+  });
 }
 
 /** Normalize users-field answers (string or string[]) to a name list. */
