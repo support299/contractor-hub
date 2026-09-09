@@ -108,15 +108,17 @@ interface Props {
   users?: HubUser[];
 }
 
-export function UserFormDialog({ open, onOpenChange, user, users = [] }: Props) {
+const EMPTY_USERS: HubUser[] = [];
+
+export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
   const editingId = user?.id ?? null;
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [roster, setRoster] = useState<HubUser[]>(users);
+  const [roster, setRoster] = useState<HubUser[]>(users ?? EMPTY_USERS);
   const [sectorFocused, setSectorFocused] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setRoster(users);
+    if (users) setRoster(users);
   }, [users]);
 
   useEffect(() => {
