@@ -74,21 +74,29 @@ export function clearAuth() {
   window.dispatchEvent(new CustomEvent("cotg-storage"));
 }
 
+let refreshInflight: Promise<string | null> | null = null;
+
 async function refreshAccess(): Promise<string | null> {
-  const refresh = localStorage.getItem(REFRESH_KEY);
-  if (!refresh) return null;
-  const res = await fetch(`${API_BASE}/auth/refresh/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh }),
+  if (refreshInflight) return refreshInflight;
+  refreshInflight = (async () => {
+    const refresh = localStorage.getItem(REFRESH_KEY);
+    if (!refresh) return null;
+    const res = await fetch(`${API_BASE}/auth/refresh/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    });
+    if (!res.ok) {
+      clearAuth();
+      return null;
+    }
+    const data = (await res.json()) as { access: string };
+    localStorage.setItem(TOKEN_KEY, data.access);
+    return data.access;
+  })().finally(() => {
+    refreshInflight = null;
   });
-  if (!res.ok) {
-    clearAuth();
-    return null;
-  }
-  const data = (await res.json()) as { access: string };
-  localStorage.setItem(TOKEN_KEY, data.access);
-  return data.access;
+  return refreshInflight;
 }
 
 export class ApiError extends Error {

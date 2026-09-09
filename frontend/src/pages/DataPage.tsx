@@ -407,7 +407,7 @@ function FormDataTable({ form }: FormDataTableProps) {
       }
     };
     load();
-    const t = window.setInterval(load, 15000);
+    const t = window.setInterval(load, 60_000);
     return () => {
       active = false;
       window.clearInterval(t);

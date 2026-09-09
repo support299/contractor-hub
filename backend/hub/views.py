@@ -51,6 +51,7 @@ from .serializers import (
     HubResourceFolderSerializer,
     HubTrainingMaterialSerializer,
     HubUserDirectorySerializer,
+    HubUserListSerializer,
     HubUserSerializer,
     MeUpdateSerializer,
     PasswordLoginSerializer,
@@ -356,6 +357,17 @@ class HubUserViewSet(viewsets.ModelViewSet):
             return [HubAccess()]
         return [IsAdminRole()]
 
+    def get_serializer_class(self):
+        if self.action == "list":
+            return HubUserListSerializer
+        return HubUserSerializer
+
+    def get_queryset(self):
+        qs = HubUser.objects.all()
+        if self.action == "list":
+            return qs.defer("picture")
+        return qs
+
     def list(self, request, *args, **kwargs):
         from datetime import date
 
@@ -383,7 +395,7 @@ class HubUserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="sectors")
     def sectors(self, request):
         sectors = set()
-        for u in HubUser.objects.all():
+        for u in HubUser.objects.only("sectors"):
             for s in u.sectors or []:
                 if s and str(s).strip():
                     sectors.add(str(s).strip())

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { createSharedFetch } from "./shared-fetch";
 
 export interface HubAlert {
   id: string;
@@ -12,10 +13,13 @@ export interface HubAlert {
 const CHANGE_EVENT = "cotg-alerts-storage";
 function emitChange() {
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  alertsResource.invalidate();
 }
 
+const alertsResource = createSharedFetch(() => api<HubAlert[]>("/alerts/", { auth: false }), 30_000);
+
 export async function fetchAlerts(): Promise<HubAlert[]> {
-  return api<HubAlert[]>("/alerts/", { auth: false });
+  return alertsResource.get();
 }
 
 export async function fetchActiveAlerts(): Promise<HubAlert[]> {
@@ -63,11 +67,16 @@ export function useAlerts() {
     };
     load();
     const onChange = () => load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") load();
+    };
     window.addEventListener(CHANGE_EVENT, onChange);
-    const t = window.setInterval(load, 15000);
+    document.addEventListener("visibilitychange", onVis);
+    const t = window.setInterval(load, 60_000);
     return () => {
       active = false;
       window.removeEventListener(CHANGE_EVENT, onChange);
+      document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(t);
     };
   }, []);

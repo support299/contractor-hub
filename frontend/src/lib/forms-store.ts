@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, API_BASE, ApiError } from "./api";
 import type { Role } from "./hub-store";
+import { createSharedFetch } from "./shared-fetch";
 
 export type FormStatus = "active" | "inactive";
 
@@ -135,7 +136,13 @@ function fromApi(r: Record<string, unknown>): HubForm {
 const CHANGE_EVENT = "cotg-forms-storage";
 function emitChange() {
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  formsResource.invalidate();
 }
+
+const formsResource = createSharedFetch(async () => {
+  const data = await api<Record<string, unknown>[]>("/forms/");
+  return (data ?? []).map(fromApi);
+}, 30_000);
 
 export function slugify(input: string): string {
   return input
@@ -147,8 +154,7 @@ export function slugify(input: string): string {
 }
 
 export async function fetchForms(): Promise<HubForm[]> {
-  const data = await api<Record<string, unknown>[]>("/forms/");
-  return (data ?? []).map(fromApi);
+  return formsResource.get();
 }
 
 export async function fetchFormBySlug(slug: string): Promise<HubForm | null> {
@@ -284,11 +290,16 @@ export function useForms() {
     };
     load();
     const onChange = () => load();
+    const onVis = () => {
+      if (document.visibilityState === "visible") load();
+    };
     window.addEventListener(CHANGE_EVENT, onChange);
-    const t = window.setInterval(load, 15000);
+    document.addEventListener("visibilitychange", onVis);
+    const t = window.setInterval(load, 60_000);
     return () => {
       active = false;
       window.removeEventListener(CHANGE_EVENT, onChange);
+      document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(t);
     };
   }, []);

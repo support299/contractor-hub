@@ -82,6 +82,23 @@ export function findFieldIdByType(form: HubForm | null, type: string): string | 
   return f?.id ?? null;
 }
 
+/** New-client reviews: only "How would you rate the cleaners?" (and FR equivalents). */
+const NEW_CLIENT_CLEANER_RATING_NEEDLES = ["cleaners", "nettoyeur", "préposé", "prepose"];
+
+export function starRatingFieldIdsForScore(form: HubForm | null): string[] {
+  if (!form) return [];
+  const starFields = form.fields.filter((f) => f.type === "star_rating");
+  if (!starFields.length) return [];
+  if (!NEW_CLIENT_REVIEW_SLUGS.includes(form.slug ?? "")) {
+    return starFields.map((f) => f.id);
+  }
+  const match = starFields.find((f) => {
+    const label = (f.label ?? "").toLowerCase();
+    return NEW_CLIENT_CLEANER_RATING_NEEDLES.some((n) => label.includes(n));
+  });
+  return [match?.id ?? starFields[0].id];
+}
+
 export function num(v: unknown): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = typeof v === "number" ? v : parseFloat(String(v));
@@ -147,7 +164,7 @@ export function avgStarRatingForNames(
   let sum = 0;
   let count = 0;
   for (const { form, subs } of reviewData) {
-    const starIds = findFieldIdsByType(form, "star_rating");
+    const starIds = starRatingFieldIdsForScore(form);
     if (!starIds.length) continue;
     for (const sub of subs) {
       if (!inRange(sub, range)) continue;
@@ -239,7 +256,7 @@ export function collectFeedbackForNames(
 ): FeedbackItem[] {
   const items: FeedbackItem[] = [];
   for (const { form, subs } of reviewData) {
-    const starIds = findFieldIdsByType(form, "star_rating");
+    const starIds = starRatingFieldIdsForScore(form);
     for (const sub of subs) {
       if (!inRange(sub, range)) continue;
       if (!submissionMatchesAnyUser(sub, form, userNames)) continue;

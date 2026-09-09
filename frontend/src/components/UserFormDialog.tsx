@@ -21,6 +21,8 @@ import {
 import {
   addUser,
   deleteUser,
+  fetchUser,
+  fetchUsers,
   POSITIONS,
   updateUser,
   type HubUser,
@@ -103,26 +105,50 @@ interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   user?: HubUser | null;
-  users: HubUser[];
+  users?: HubUser[];
 }
 
-export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
+export function UserFormDialog({ open, onOpenChange, user, users = [] }: Props) {
   const editingId = user?.id ?? null;
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [roster, setRoster] = useState<HubUser[]>(users);
   const [sectorFocused, setSectorFocused] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setRoster(users);
+  }, [users]);
 
   useEffect(() => {
     if (!open) return;
     setForm(user ? formFromUser(user) : emptyForm);
     setSectorFocused(false);
+    let active = true;
+    (async () => {
+      try {
+        const list = await fetchUsers();
+        if (active) setRoster(list);
+      } catch {
+        /* keep roster from props */
+      }
+      if (!user?.id) return;
+      try {
+        const full = await fetchUser(user.id);
+        if (active) setForm(formFromUser(full));
+      } catch {
+        /* list row is enough to start editing */
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [open, user]);
 
   const allSectors = useMemo(() => {
     const set = new Set<string>();
-    for (const u of users) for (const s of u.sectors ?? []) if (s?.trim()) set.add(s.trim());
+    for (const u of roster) for (const s of u.sectors ?? []) if (s?.trim()) set.add(s.trim());
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [users]);
+  }, [roster]);
   const sectorSuggestions = useMemo(() => {
     const q = form.sectorInput.trim().toLowerCase();
     return allSectors.filter(
@@ -181,7 +207,7 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
         ? Number(form.availableVacationDays)
         : 0,
     };
-    const dup = users.find(
+    const dup = roster.find(
       (u) =>
         u.id !== editingId &&
         ((payload.email && u.email.toLowerCase() === payload.email.toLowerCase()) ||

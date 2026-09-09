@@ -12,7 +12,7 @@ import { FormSubmitDialog } from "@/components/FormSubmitDialog";
 import { UserFormDialog } from "@/components/UserFormDialog";
 import { isAdminSession } from "@/lib/api";
 import { useForms } from "@/lib/forms-store";
-import { useSession, useUsers } from "@/lib/hub-store";
+import { useSession } from "@/lib/hub-store";
 import {
   visibleQuickEntryShortcuts,
   type VisibleQuickEntry,
@@ -39,7 +39,6 @@ export function useQuickEntry() {
 
 export function QuickEntryProvider({ children }: { children: ReactNode }) {
   const forms = useForms();
-  const users = useUsers();
   const session = useSession();
   const admin = isAdminSession(session);
   const items = useMemo(() => visibleQuickEntryShortcuts(forms, admin), [forms, admin]);
@@ -85,7 +84,7 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
           }}
         />
       ) : null}
-      <UserFormDialog open={userOpen} onOpenChange={setUserOpen} users={users} />
+      <UserFormDialog open={userOpen} onOpenChange={setUserOpen} />
     </QuickEntryContext.Provider>
   );
 }

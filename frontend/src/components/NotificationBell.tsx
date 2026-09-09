@@ -43,10 +43,18 @@ export function NotificationBell() {
   const connect = useCallback(() => {
     const token = getAccessToken();
     if (!token || !aliveRef.current) return;
-    try {
-      wsRef.current?.close();
-    } catch {
-      /* ignore */
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const prev = wsRef.current;
+    wsRef.current = null;
+    if (prev && prev.readyState < WebSocket.CLOSING) {
+      try {
+        prev.close();
+      } catch {
+        /* ignore */
+      }
     }
     const ws = new WebSocket(notificationsWsUrl(token));
     wsRef.current = ws;
@@ -57,14 +65,14 @@ export function NotificationBell() {
       try {
         const data = JSON.parse(ev.data as string);
         if (!isNotification(data)) return;
-        setItems((prev) => {
-          if (prev.some((n) => n.id === data.id)) {
-            return prev.map((n) => (n.id === data.id ? data : n));
+        setItems((prevItems) => {
+          if (prevItems.some((n) => n.id === data.id)) {
+            return prevItems.map((n) => (n.id === data.id ? data : n));
           }
           if (!data.readAt) {
             setUnread((n) => n + 1);
           }
-          return [data, ...prev];
+          return [data, ...prevItems];
         });
       } catch {
         /* ignore malformed */
@@ -72,6 +80,7 @@ export function NotificationBell() {
     };
     ws.onclose = () => {
       if (!aliveRef.current) return;
+      if (wsRef.current !== ws) return;
       const delay = Math.min(30000, 1000 * 2 ** retryRef.current);
       retryRef.current = Math.min(retryRef.current + 1, 6);
       timerRef.current = window.setTimeout(connect, delay);

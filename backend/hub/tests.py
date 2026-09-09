@@ -525,6 +525,30 @@ class PublicUserDirectoryTests(TestCase):
         res = APIClient().get("/api/users/")
         self.assertEqual(res.status_code, 401)
 
+    def test_auth_user_list_omits_picture(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        admin = HubUser.objects.create(
+            name="List Admin",
+            email="list-admin@test.local",
+            role=HubUser.Role.ADMIN,
+            picture="data:image/png;base64," + ("A" * 8000),
+        )
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(admin)['access']}"
+        )
+        listing = client.get("/api/users/")
+        self.assertEqual(listing.status_code, 200)
+        row = next(u for u in listing.data if u["name"] == "List Admin")
+        self.assertNotIn("picture", row)
+        detail = client.get(f"/api/users/{admin.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.data["picture"].startswith("data:image/png"))
+
 
 class FormUserExcludePersistTests(TestCase):
     def setUp(self):

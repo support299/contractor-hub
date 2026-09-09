@@ -149,6 +149,13 @@ class HubUserSerializer(serializers.ModelSerializer):
         return data
 
 
+class HubUserListSerializer(HubUserSerializer):
+    """List payload without photos — those can be 1MB+ in production."""
+
+    class Meta(HubUserSerializer.Meta):
+        fields = [f for f in HubUserSerializer.Meta.fields if f != "picture"]
+
+
 class HubUserDirectorySerializer(serializers.ModelSerializer):
     """Public form picker: names, photos, and role (so forms can hide admins)."""
 

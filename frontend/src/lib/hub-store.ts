@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getSession, type Session } from "./api";
+import { createSharedFetch } from "./shared-fetch";
 
 export type Role = "employee" | "contractor" | "admin" | "display";
 export type UserStatus = "active" | "inactive";
@@ -80,9 +81,18 @@ function normalize(u: Record<string, unknown>): HubUser {
   };
 }
 
-export async function fetchUsers(): Promise<HubUser[]> {
+const usersResource = createSharedFetch(async () => {
   const data = await api<Record<string, unknown>[]>("/users/");
   return (data ?? []).map(normalize);
+}, 30_000);
+
+export async function fetchUsers(): Promise<HubUser[]> {
+  return usersResource.get();
+}
+
+export async function fetchUser(id: string): Promise<HubUser> {
+  const data = await api<Record<string, unknown>>(`/users/${id}/`);
+  return normalize(data);
 }
 
 /** Active staff for public/embed forms. Names and photos only. */
@@ -105,17 +115,20 @@ export async function addUser(user: Omit<HubUser, "id">): Promise<HubUser | null
     method: "POST",
     body: user,
   });
+  usersResource.invalidate();
   emitChange();
   return normalize(data);
 }
 
 export async function updateUser(id: string, patch: Partial<Omit<HubUser, "id">>) {
   await api(`/users/${id}/`, { method: "PATCH", body: patch });
+  usersResource.invalidate();
   emitChange();
 }
 
 export async function deleteUser(id: string) {
   await api(`/users/${id}/`, { method: "DELETE" });
+  usersResource.invalidate();
   emitChange();
 }
 
@@ -145,12 +158,20 @@ export function useUsers() {
       }
     };
     load();
-    const onChange = () => load();
+    const onChange = () => {
+      usersResource.invalidate();
+      load();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") load();
+    };
     window.addEventListener(CHANGE_EVENT, onChange);
-    const t = window.setInterval(load, 15000);
+    document.addEventListener("visibilitychange", onVis);
+    const t = window.setInterval(load, 60_000);
     return () => {
       active = false;
       window.removeEventListener(CHANGE_EVENT, onChange);
+      document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(t);
     };
   }, []);
