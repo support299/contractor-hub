@@ -30,7 +30,6 @@ import {
   countFeedbackByAudience,
   countFiveStarReviews,
   dateInRange,
-  formatMoney,
   formatMomDelta,
   initialsOf,
   monthRange,
@@ -197,7 +196,6 @@ export default function ScoreboardPage() {
       return dateInRange(lockInEventAt(row), prevRange);
     });
   }, [lockIns, idSet, prevRange]);
-  const lockInAmount = periodLockIns.reduce((a, r) => a + r.amount, 0);
 
   const feedback = useMemo(
     () => collectFeedbackForNames(nameSet, reviewData, range),
@@ -345,10 +343,8 @@ export default function ScoreboardPage() {
             delta={formatMomDelta(periodLockIns.length, prevLockIns.length, "number")}
             sub={
               pendingLockIns.length
-                ? `${formatMoney(lockInAmount)} · ${pendingLockIns.length} pending`
-                : periodLockIns.length
-                  ? formatMoney(lockInAmount)
-                  : "Confirmed this month"
+                ? `${pendingLockIns.length} pending`
+                : "Confirmed this month"
             }
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
@@ -560,7 +556,6 @@ function LockInListRow({
           <p className="text-xs text-muted-foreground truncate">{meta}</p>
         ) : null}
       </div>
-      <span className="font-semibold whitespace-nowrap">{formatMoney(row.amount)}</span>
     </li>
   );
 }
