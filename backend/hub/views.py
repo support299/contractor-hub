@@ -336,6 +336,10 @@ class MeView(APIView):
         if "phone" in ser.validated_data:
             profile.phone = ser.validated_data["phone"] or ""
         profile.save()
+        if "email" in ser.validated_data:
+            from .services.jobber_bridge import maybe_fill_jobber_id
+
+            maybe_fill_jobber_id(profile)
         return self.get(request)
 
 
@@ -367,6 +371,18 @@ class HubUserViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             return qs.defer("picture")
         return qs
+
+    def perform_create(self, serializer):
+        from .services.jobber_bridge import maybe_fill_jobber_id
+
+        user = serializer.save()
+        maybe_fill_jobber_id(user)
+
+    def perform_update(self, serializer):
+        from .services.jobber_bridge import maybe_fill_jobber_id
+
+        user = serializer.save()
+        maybe_fill_jobber_id(user)
 
     def list(self, request, *args, **kwargs):
         from datetime import date

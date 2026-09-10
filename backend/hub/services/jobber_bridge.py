@@ -66,3 +66,67 @@ def create_absence_task(
         "task_id": task_id,
         "jobber_web_uri": data.get("jobber_web_uri") or "",
     }
+
+
+def find_jobber_user_id_by_email(email: str) -> str | None:
+    """Ask service-creator for a Jobber team user id. Returns None on miss or error."""
+    email = (email or "").strip()
+    if not email:
+        return None
+    base = _base_url()
+    if not base:
+        logger.warning("SERVICE_CREATOR_BASE_URL is not configured")
+        return None
+    url = f"{base}/api/jobber/users/"
+    try:
+        resp = requests.get(url, params={"email": email}, timeout=20)
+    except requests.RequestException as exc:
+        logger.warning("Jobber user lookup failed: %s", exc)
+        return None
+    if resp.status_code >= 400:
+        logger.warning(
+            "Jobber user lookup HTTP %s: %s", resp.status_code, (resp.text or "")[:300]
+        )
+        return None
+    try:
+        data = resp.json() if resp.content else {}
+    except ValueError:
+        return None
+    user = data.get("user") if isinstance(data, dict) else None
+    if not isinstance(user, dict):
+        return None
+    return (user.get("id") or "").strip() or None
+
+
+def maybe_fill_jobber_id(user) -> None:
+    """Fill HubUser.jobber_id from Jobber if empty. Never overwrites. Never blocks save."""
+    if user is None:
+        return
+    if (getattr(user, "jobber_id", None) or "").strip():
+        return
+    email = (getattr(user, "email", None) or "").strip()
+    if not email:
+        return
+    try:
+        jobber_id = find_jobber_user_id_by_email(email)
+    except Exception:
+        logger.exception("Jobber user lookup crashed for %s", email)
+        return
+    if not jobber_id:
+        return
+    from hub.models import HubUser
+
+    taken = (
+        HubUser.objects.filter(jobber_id=jobber_id)
+        .exclude(pk=user.pk)
+        .exists()
+    )
+    if taken:
+        logger.warning(
+            "Skipping Jobber id %s for %s; already linked to another Hub user",
+            jobber_id,
+            email,
+        )
+        return
+    user.jobber_id = jobber_id
+    user.save(update_fields=["jobber_id", "updated_at"])

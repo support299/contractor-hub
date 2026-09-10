@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
@@ -1257,5 +1258,121 @@ class DisplayRolePermissionTests(TestCase):
 
         notes = self.client.get("/api/notifications/")
         self.assertEqual(notes.status_code, 403)
+
+
+class JobberIdFillTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Jobber Admin",
+            email="jobber-admin@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_create_with_email_fills_jobber_id(self, mock_find):
+        from hub.models import HubUser
+
+        mock_find.return_value = "Z2lk_new_hire"
+        res = self.client.post(
+            "/api/users/",
+            {"name": "New Hire", "email": "new@cotg.com", "role": "employee"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        user = HubUser.objects.get(email="new@cotg.com")
+        self.assertEqual(user.jobber_id, "Z2lk_new_hire")
+        mock_find.assert_called_once_with("new@cotg.com")
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_existing_jobber_id_not_overwritten(self, mock_find):
+        from hub.models import HubUser
+
+        mock_find.return_value = "should_not_use"
+        user = HubUser.objects.create(
+            name="Has Id",
+            email="hasid@cotg.com",
+            jobber_id="keep_me",
+        )
+        res = self.client.patch(
+            f"/api/users/{user.id}/",
+            {"name": "Has Id Updated"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.jobber_id, "keep_me")
+        mock_find.assert_not_called()
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_patch_email_fills_when_jobber_id_empty(self, mock_find):
+        from hub.models import HubUser
+
+        mock_find.return_value = "Z2lk_from_email"
+        user = HubUser.objects.create(name="No Mail", email="")
+        res = self.client.patch(
+            f"/api/users/{user.id}/",
+            {"email": "later@cotg.com"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.jobber_id, "Z2lk_from_email")
+        mock_find.assert_called_once_with("later@cotg.com")
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_skips_id_already_on_another_user(self, mock_find):
+        from hub.models import HubUser
+
+        HubUser.objects.create(
+            name="Owner",
+            email="owner@cotg.com",
+            jobber_id="Z2lk_taken",
+        )
+        mock_find.return_value = "Z2lk_taken"
+        res = self.client.post(
+            "/api/users/",
+            {"name": "Dupe", "email": "dupe@cotg.com", "role": "employee"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        user = HubUser.objects.get(email="dupe@cotg.com")
+        self.assertEqual(user.jobber_id, "")
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_no_email_skips_lookup(self, mock_find):
+        from hub.models import HubUser
+
+        res = self.client.post(
+            "/api/users/",
+            {"name": "No Email", "role": "employee"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        user = HubUser.objects.get(name="No Email")
+        self.assertEqual(user.jobber_id, "")
+        mock_find.assert_not_called()
+
+    @patch("hub.services.jobber_bridge.find_jobber_user_id_by_email")
+    def test_lookup_failure_does_not_block_save(self, mock_find):
+        from hub.models import HubUser
+
+        mock_find.side_effect = RuntimeError("down")
+        res = self.client.post(
+            "/api/users/",
+            {"name": "Still Saved", "email": "still@cotg.com", "role": "employee"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        user = HubUser.objects.get(email="still@cotg.com")
+        self.assertEqual(user.jobber_id, "")
 
 
