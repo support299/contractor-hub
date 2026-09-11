@@ -13,6 +13,7 @@ from hub.services.ghl_internal import (
     GhlInternalApiError,
     GhlInternalConfigError,
     count_five_star,
+    serialize_google_reviews,
     sync_google_reviews,
 )
 
@@ -36,5 +37,10 @@ class GoogleReviewSummaryView(APIView):
             sync_google_reviews()
         except (GhlInternalConfigError, GhlInternalApiError) as exc:
             logger.warning("Google review sync skipped: %s", exc)
-            return Response({"five_star": 0})
-        return Response({"five_star": count_five_star(start=start, end=end)})
+            return Response({"five_star": 0, "reviews": []})
+        return Response(
+            {
+                "five_star": count_five_star(start=start, end=end),
+                "reviews": serialize_google_reviews(start=start, end=end),
+            }
+        )

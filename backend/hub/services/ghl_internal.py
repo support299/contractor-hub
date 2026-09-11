@@ -288,14 +288,34 @@ def sync_google_reviews(*, force: bool = False) -> int:
     return n
 
 
-def count_five_star(*, start=None, end=None) -> int:
+def _google_review_qs(*, start=None, end=None, five_star_only: bool = False):
     qs = GhlGoogleReview.objects.filter(
         source=GOOGLE_REVIEW_SOURCE,
         deleted=False,
-        star_rating=5,
     )
+    if five_star_only:
+        qs = qs.filter(star_rating=5)
     if start:
         qs = qs.filter(date_added__gte=start)
     if end:
         qs = qs.filter(date_added__lte=end)
-    return qs.count()
+    return qs
+
+
+def count_five_star(*, start=None, end=None) -> int:
+    return _google_review_qs(start=start, end=end, five_star_only=True).count()
+
+
+def serialize_google_reviews(*, start=None, end=None) -> list[dict[str, Any]]:
+    rows = []
+    for rev in _google_review_qs(start=start, end=end).order_by("-date_added"):
+        rows.append(
+            {
+                "id": rev.ghl_id,
+                "reviewer_name": rev.reviewer_name,
+                "comment": rev.comment,
+                "star_rating": rev.star_rating,
+                "date_added": rev.date_added.isoformat() if rev.date_added else None,
+            }
+        )
+    return rows

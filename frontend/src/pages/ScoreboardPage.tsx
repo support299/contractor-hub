@@ -12,7 +12,7 @@ import {
 import { useUsers, getSectors, type HubUser, type Role } from "@/lib/hub-store";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
-  fetchGoogleFiveStarCount,
+  fetchGoogleReviewSummary,
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
@@ -20,6 +20,7 @@ import {
   lockInEventAt,
   pendingLockInEventAt,
   rangeToVisitQuery,
+  type GoogleReviewRow,
   type LockInBonusRow,
   type VisitSummary,
 } from "@/lib/lock-in-store";
@@ -89,6 +90,7 @@ export default function ScoreboardPage() {
   });
   const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
   const [prevGoogleFiveStarCount, setPrevGoogleFiveStarCount] = useState(0);
+  const [googleReviews, setGoogleReviews] = useState<GoogleReviewRow[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -148,17 +150,19 @@ export default function ScoreboardPage() {
       const empty: VisitSummary = { total: 0, byTechnician: {} };
       const visitQ = rangeToVisitQuery(range);
       const prevQ = rangeToVisitQuery(prevRange);
-      const [cur, prev, fiveStar, prevFiveStar] = await Promise.all([
+      const emptyGoogle = { fiveStar: 0, reviews: [] as GoogleReviewRow[] };
+      const [cur, prev, google, prevGoogle] = await Promise.all([
         fetchVisitSummary(visitQ).catch(() => empty),
         fetchVisitSummary(prevQ).catch(() => empty),
-        fetchGoogleFiveStarCount(visitQ).catch(() => 0),
-        fetchGoogleFiveStarCount(prevQ).catch(() => 0),
+        fetchGoogleReviewSummary(visitQ).catch(() => emptyGoogle),
+        fetchGoogleReviewSummary(prevQ).catch(() => emptyGoogle),
       ]);
       if (!active) return;
       setVisitSummary(cur);
       setPrevVisitSummary(prev);
-      setGoogleFiveStarCount(fiveStar);
-      setPrevGoogleFiveStarCount(prevFiveStar);
+      setGoogleFiveStarCount(google.fiveStar);
+      setPrevGoogleFiveStarCount(prevGoogle.fiveStar);
+      setGoogleReviews(google.reviews);
     })();
     return () => {
       active = false;
@@ -367,9 +371,66 @@ export default function ScoreboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="rounded-xl border bg-card p-5 shadow-sm">
+              <h3 className="font-semibold mb-1 text-lg">Google Reviews</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                From Google · {monthLabel}
+              </p>
+              {googleReviews.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">
+                  No Google reviews this month.
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                  {googleReviews.map((rev) => {
+                    const rounded = Math.round(rev.starRating);
+                    return (
+                      <div key={rev.id} className="rounded-lg border p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">
+                              {rev.reviewerName || "Anonymous"}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex gap-0.5">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`h-3.5 w-3.5 ${
+                                      i < rounded
+                                        ? "fill-amber-400 text-amber-400"
+                                        : "text-muted-foreground/30"
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              {rev.starRating > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {rev.starRating.toFixed(1)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {rev.dateAdded ? (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {format(new Date(rev.dateAdded), "LLL d, y")}
+                            </span>
+                          ) : null}
+                        </div>
+                        {rev.comment ? (
+                          <p className="text-sm mt-3 text-foreground/80 whitespace-pre-wrap">
+                            {rev.comment}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border bg-card p-5 shadow-sm">
               <h3 className="font-semibold mb-1 text-lg">Team Client Feedback</h3>
               <p className="text-xs text-muted-foreground mb-4">
-                New and current client reviews for filtered staff in {monthLabel}.
+                From Hub · new and current client reviews for filtered staff in {monthLabel}.
               </p>
               {feedback.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">

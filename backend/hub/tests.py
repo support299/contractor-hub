@@ -1470,6 +1470,8 @@ class GoogleReviewSummaryApiTests(TestCase):
         )
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["five_star"], 1)
+        self.assertEqual(len(res.data["reviews"]), 1)
+        self.assertEqual(res.data["reviews"][0]["reviewer_name"], "")
 
     @patch("hub.google_review_views.sync_google_reviews")
     def test_display_can_read(self, mock_sync):
@@ -1477,6 +1479,7 @@ class GoogleReviewSummaryApiTests(TestCase):
         res = self.tv_client.get("/api/reviews/google-summary/")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["five_star"], 0)
+        self.assertEqual(res.data["reviews"], [])
 
     def test_staff_forbidden(self):
         res = self.emp_client.get("/api/reviews/google-summary/")
