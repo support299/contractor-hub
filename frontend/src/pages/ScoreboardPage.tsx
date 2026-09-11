@@ -12,6 +12,7 @@ import {
 import { useUsers, getSectors, type HubUser, type Role } from "@/lib/hub-store";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
+  fetchGoogleFiveStarCount,
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
@@ -86,6 +87,8 @@ export default function ScoreboardPage() {
     total: 0,
     byTechnician: {},
   });
+  const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
+  const [prevGoogleFiveStarCount, setPrevGoogleFiveStarCount] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -143,13 +146,19 @@ export default function ScoreboardPage() {
     let active = true;
     (async () => {
       const empty: VisitSummary = { total: 0, byTechnician: {} };
-      const [cur, prev] = await Promise.all([
-        fetchVisitSummary(rangeToVisitQuery(range)).catch(() => empty),
-        fetchVisitSummary(rangeToVisitQuery(prevRange)).catch(() => empty),
+      const visitQ = rangeToVisitQuery(range);
+      const prevQ = rangeToVisitQuery(prevRange);
+      const [cur, prev, fiveStar, prevFiveStar] = await Promise.all([
+        fetchVisitSummary(visitQ).catch(() => empty),
+        fetchVisitSummary(prevQ).catch(() => empty),
+        fetchGoogleFiveStarCount(visitQ).catch(() => 0),
+        fetchGoogleFiveStarCount(prevQ).catch(() => 0),
       ]);
       if (!active) return;
       setVisitSummary(cur);
       setPrevVisitSummary(prev);
+      setGoogleFiveStarCount(fiveStar);
+      setPrevGoogleFiveStarCount(prevFiveStar);
     })();
     return () => {
       active = false;
@@ -205,8 +214,8 @@ export default function ScoreboardPage() {
     () => collectFeedbackForNames(nameSet, reviewData, prevRange),
     [nameSet, reviewData, prevRange],
   );
-  const fiveStarCount = useMemo(() => countFiveStarReviews(feedback), [feedback]);
-  const prevFiveStarCount = useMemo(() => countFiveStarReviews(prevFeedback), [prevFeedback]);
+  const fiveStarCount = googleFiveStarCount;
+  const prevFiveStarCount = prevGoogleFiveStarCount;
   const feedbackAudience = useMemo(() => countFeedbackByAudience(feedback), [feedback]);
   const feedbackSub =
     feedback.length === 0

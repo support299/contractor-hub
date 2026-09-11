@@ -476,3 +476,45 @@ class HubApiKey(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.prefix}…)"
+
+
+class GhlInternalAuth(TimeStampedModel):
+    """Browser-session tokens for GHL internal APIs (backend.leadconnectorhq.com)."""
+
+    location_id = models.CharField(max_length=100, unique=True)
+    firebase_api_key = models.CharField(max_length=255, blank=True, default="")
+    firebase_refresh_token = models.TextField(blank=True, default="")
+    firebase_access_token = models.TextField(blank=True, default="")
+    firebase_id_token = models.TextField(blank=True, default="")
+    firebase_custom_token = models.TextField(blank=True, default="")
+    leadconnector_bearer_token = models.TextField(blank=True, default="")
+    access_token = models.TextField(blank=True, default="")
+    expires_at = models.DateTimeField(null=True, blank=True)
+    last_reviews_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "GHL internal auth"
+
+    def __str__(self) -> str:
+        return f"GhlInternalAuth({self.location_id})"
+
+
+class GhlGoogleReview(TimeStampedModel):
+    """Cached Google reviews from GHL Reputation (source=247)."""
+
+    ghl_id = models.CharField(max_length=64, unique=True)
+    reviewer_name = models.CharField(max_length=255, blank=True, default="")
+    comment = models.TextField(blank=True, default="")
+    star_rating = models.PositiveSmallIntegerField(default=0)
+    source = models.IntegerField(default=247)
+    deleted = models.BooleanField(default=False)
+    date_added = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-date_added"]
+        indexes = [
+            models.Index(fields=["source", "deleted", "star_rating", "date_added"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.reviewer_name} ({self.star_rating})"

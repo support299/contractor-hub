@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from . import analytics_views, lock_in_views, views
+from . import analytics_views, google_review_views, lock_in_views, views
 
 router = DefaultRouter()
 router.register(r"users", views.HubUserViewSet, basename="hub-users")
@@ -98,6 +98,11 @@ urlpatterns = [
         "admin-internal-app/analytics/",
         analytics_views.AnalyticsOverviewView.as_view(),
         name="analytics-overview",
+    ),
+    path(
+        "reviews/google-summary/",
+        google_review_views.GoogleReviewSummaryView.as_view(),
+        name="google-review-summary",
     ),
     path("", include(router.urls)),
 ]

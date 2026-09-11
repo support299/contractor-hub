@@ -1,6 +1,8 @@
 from django.contrib import admin
 
 from .models import (
+    GhlGoogleReview,
+    GhlInternalAuth,
     HubAlert,
     HubApiKey,
     HubDocument,
@@ -151,3 +153,17 @@ class HubApiKeyAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Keys must be created via: python manage.py create_api_key
         return False
+
+
+@admin.register(GhlInternalAuth)
+class GhlInternalAuthAdmin(admin.ModelAdmin):
+    list_display = ("location_id", "expires_at", "last_reviews_synced_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "last_reviews_synced_at")
+
+
+@admin.register(GhlGoogleReview)
+class GhlGoogleReviewAdmin(admin.ModelAdmin):
+    list_display = ("reviewer_name", "star_rating", "date_added", "deleted")
+    list_filter = ("star_rating", "deleted")
+    search_fields = ("reviewer_name", "ghl_id", "comment")
+    readonly_fields = ("created_at", "updated_at")

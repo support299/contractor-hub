@@ -1376,3 +1376,110 @@ class JobberIdFillTests(TestCase):
         self.assertEqual(user.jobber_id, "")
 
 
+class GoogleFiveStarCountTests(TestCase):
+    def test_counts_five_star_in_range_only(self):
+        from datetime import datetime, timezone as dt_timezone
+
+        from hub.models import GhlGoogleReview
+        from hub.services.ghl_internal import count_five_star
+
+        tz = dt_timezone.utc
+        GhlGoogleReview.objects.create(
+            ghl_id="a",
+            star_rating=5,
+            source=247,
+            date_added=datetime(2026, 9, 9, 18, 0, tzinfo=tz),
+        )
+        GhlGoogleReview.objects.create(
+            ghl_id="b",
+            star_rating=4,
+            source=247,
+            date_added=datetime(2026, 9, 8, 12, 0, tzinfo=tz),
+        )
+        GhlGoogleReview.objects.create(
+            ghl_id="c",
+            star_rating=5,
+            source=247,
+            date_added=datetime(2026, 8, 1, 12, 0, tzinfo=tz),
+        )
+        GhlGoogleReview.objects.create(
+            ghl_id="d",
+            star_rating=5,
+            source=71,
+            date_added=datetime(2026, 9, 8, 12, 0, tzinfo=tz),
+        )
+        start = datetime(2026, 9, 1, 0, 0, tzinfo=tz)
+        end = datetime(2026, 9, 30, 23, 59, 59, tzinfo=tz)
+        self.assertEqual(count_five_star(start=start, end=end), 1)
+
+
+class GoogleReviewSummaryApiTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Admin",
+            email="grev-admin@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.display = HubUser.objects.create(
+            name="TV",
+            email="grev-tv@test.local",
+            role=HubUser.Role.DISPLAY,
+        )
+        self.employee = HubUser.objects.create(
+            name="Staff",
+            email="grev-emp@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.admin_client = APIClient()
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+        self.tv_client = APIClient()
+        self.tv_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.display)['access']}"
+        )
+        self.emp_client = APIClient()
+        self.emp_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+
+    @patch("hub.google_review_views.sync_google_reviews")
+    def test_admin_gets_five_star_count(self, mock_sync):
+        from datetime import datetime, timezone as dt_timezone
+
+        from hub.models import GhlGoogleReview
+
+        mock_sync.return_value = 1
+        GhlGoogleReview.objects.create(
+            ghl_id="sep",
+            star_rating=5,
+            source=247,
+            date_added=datetime(2026, 9, 9, 18, 0, tzinfo=dt_timezone.utc),
+        )
+        res = self.admin_client.get(
+            "/api/reviews/google-summary/",
+            {
+                "start_at_after": "2026-09-01T00:00:00Z",
+                "start_at_before": "2026-09-30T23:59:59Z",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["five_star"], 1)
+
+    @patch("hub.google_review_views.sync_google_reviews")
+    def test_display_can_read(self, mock_sync):
+        mock_sync.return_value = 0
+        res = self.tv_client.get("/api/reviews/google-summary/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["five_star"], 0)
+
+    def test_staff_forbidden(self):
+        res = self.emp_client.get("/api/reviews/google-summary/")
+        self.assertEqual(res.status_code, 403)
+
+

@@ -130,3 +130,17 @@ export function rangeToVisitQuery(range: { from?: Date; to?: Date } | undefined)
   end.setHours(23, 59, 59, 999);
   return { startAtAfter: start.toISOString(), startAtBefore: end.toISOString() };
 }
+
+export async function fetchGoogleFiveStarCount(params: {
+  startAtAfter?: string;
+  startAtBefore?: string;
+}): Promise<number> {
+  const q = new URLSearchParams();
+  if (params.startAtAfter) q.set("start_at_after", params.startAtAfter);
+  if (params.startAtBefore) q.set("start_at_before", params.startAtBefore);
+  const qs = q.toString();
+  const data = await api<{ five_star?: number }>(
+    `/reviews/google-summary/${qs ? `?${qs}` : ""}`,
+  );
+  return Number(data?.five_star) || 0;
+}
