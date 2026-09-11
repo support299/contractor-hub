@@ -316,12 +316,14 @@ export default function ScoreboardPage() {
             label="Total Visits"
             value={String(teamVisits)}
             delta={formatMomDelta(teamVisits, prevTeamVisits, "number")}
+            source="Hub"
             icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />}
           />
           <KpiCard
             label="Five-Star Reviews"
             value={String(fiveStarCount)}
             delta={formatMomDelta(fiveStarCount, prevFiveStarCount, "number")}
+            source="Google"
             icon={<Star className="h-4 w-4 text-amber-500" />}
           />
           <KpiCard
@@ -329,6 +331,7 @@ export default function ScoreboardPage() {
             value={String(feedback.length)}
             delta={formatMomDelta(feedback.length, prevFeedback.length, "number")}
             sub={feedbackSub}
+            source="Hub"
             icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
           />
           <KpiCard
@@ -344,6 +347,7 @@ export default function ScoreboardPage() {
                 ? `${rating.count} rating${rating.count === 1 ? "" : "s"}`
                 : undefined
             }
+            source="Hub"
             icon={<Star className="h-4 w-4 text-amber-500" />}
           />
           <KpiCard
@@ -355,6 +359,7 @@ export default function ScoreboardPage() {
                 ? `${pendingLockIns.length} pending`
                 : "Confirmed this month"
             }
+            source="Hub"
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
           />
         </div>
@@ -574,12 +579,14 @@ function KpiCard({
   value,
   delta,
   sub,
+  source,
   icon,
 }: {
   label: string;
   value: string;
   delta: { text: string; direction: "up" | "down" | "flat" };
   sub?: string;
+  source: "Google" | "Hub";
   icon: React.ReactNode;
 }) {
   const deltaClass =
@@ -597,6 +604,7 @@ function KpiCard({
       <p className="text-3xl font-bold mt-2 tabular-nums">{value}</p>
       <p className={`text-xs mt-2 font-medium ${deltaClass}`}>{delta.text}</p>
       {sub ? <p className="text-[11px] text-muted-foreground mt-1">{sub}</p> : null}
+      <p className="text-[11px] text-muted-foreground mt-1">From {source}</p>
     </div>
   );
 }
