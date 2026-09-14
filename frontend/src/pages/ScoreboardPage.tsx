@@ -6,6 +6,7 @@ import {
   Lock,
   MessageSquare,
   Monitor,
+  Percent,
   Star,
   Users,
 } from "lucide-react";
@@ -226,6 +227,15 @@ export default function ScoreboardPage() {
       ? "New and current clients"
       : `${feedbackAudience.newClients} new · ${feedbackAudience.currentClients} current`;
 
+  const engagement = useMemo(
+    () => (teamVisits > 0 ? (feedback.length / teamVisits) * 100 : null),
+    [teamVisits, feedback.length],
+  );
+  const prevEngagement = useMemo(
+    () => (prevTeamVisits > 0 ? (prevFeedback.length / prevTeamVisits) * 100 : null),
+    [prevTeamVisits, prevFeedback.length],
+  );
+
   const leaderboard = useMemo(() => {
     return team
       .map((u) => {
@@ -315,7 +325,7 @@ export default function ScoreboardPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           <KpiCard
             label="Total Visits"
             value={String(teamVisits)}
@@ -337,6 +347,20 @@ export default function ScoreboardPage() {
             sub={feedbackSub}
             source="Hub"
             icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+          />
+          <KpiCard
+            label="Client Engagement"
+            value={engagement == null ? "—" : `${Math.round(engagement)}%`}
+            delta={
+              engagement == null
+                ? { text: "No visits yet", direction: "flat" as const }
+                : prevEngagement == null
+                  ? formatMomDelta(engagement, 0, "percent")
+                  : formatMomDelta(engagement, prevEngagement, "percent")
+            }
+            sub="Feedback ÷ visits"
+            source="Hub"
+            icon={<Percent className="h-4 w-4 text-muted-foreground" />}
           />
           <KpiCard
             label="Average Rating"
