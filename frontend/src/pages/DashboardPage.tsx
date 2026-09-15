@@ -11,6 +11,7 @@ import {
   CalendarCheck,
   MessageSquare,
   Lock,
+  Percent,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { useUsers, useSession } from "@/lib/hub-store";
@@ -179,6 +180,8 @@ export default function DashboardPage() {
     feedback.length === 0
       ? "New and current clients"
       : `${feedbackAudience.newClients} new · ${feedbackAudience.currentClients} current`;
+  const engagement =
+    visitCount > 0 ? (feedback.length / visitCount) * 100 : null;
 
   const efficiency = useMemo(
     () => computeEfficiencyScore(selected, efficiencySubs, efficiencyForm, range),
@@ -328,6 +331,12 @@ export default function DashboardPage() {
             value={String(feedback.length)}
             sub={feedbackSub}
             icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
+            label="Client Engagement"
+            value={engagement == null ? "—" : `${Math.round(engagement)}%`}
+            sub="Feedback ÷ visits"
+            icon={<Percent className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard
             label="Average Rating"
