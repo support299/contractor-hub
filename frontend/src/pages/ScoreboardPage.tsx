@@ -190,29 +190,30 @@ export default function ScoreboardPage() {
   );
 
   const pendingLockIns = useMemo(() => {
-    return uniqueLockInsByClient(
-      lockIns.filter((row) => isPendingLockIn(row) && idSet.has(row.technician)),
-    ).sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
+    return lockIns
+      .filter((row) => isPendingLockIn(row) && idSet.has(row.technician))
+      .sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
   }, [lockIns, idSet]);
 
   const periodLockIns = useMemo(() => {
-    return uniqueLockInsByClient(
-      lockIns.filter((row) => {
+    return lockIns
+      .filter((row) => {
         if (!isConfirmedLockIn(row)) return false;
         if (!idSet.has(row.technician)) return false;
         return dateInRange(lockInEventAt(row), range);
-      }),
-    ).sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
+      })
+      .sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
   }, [lockIns, idSet, range]);
   const prevLockIns = useMemo(() => {
-    return uniqueLockInsByClient(
-      lockIns.filter((row) => {
-        if (!isConfirmedLockIn(row)) return false;
-        if (!idSet.has(row.technician)) return false;
-        return dateInRange(lockInEventAt(row), prevRange);
-      }),
-    );
+    return lockIns.filter((row) => {
+      if (!isConfirmedLockIn(row)) return false;
+      if (!idSet.has(row.technician)) return false;
+      return dateInRange(lockInEventAt(row), prevRange);
+    });
   }, [lockIns, idSet, prevRange]);
+  const lockInClientCount = uniqueLockInsByClient(periodLockIns).length;
+  const prevLockInClientCount = uniqueLockInsByClient(prevLockIns).length;
+  const pendingLockInClientCount = uniqueLockInsByClient(pendingLockIns).length;
 
   const feedback = useMemo(
     () => collectFeedbackForNames(nameSet, reviewData, range),
@@ -383,11 +384,11 @@ export default function ScoreboardPage() {
           />
           <KpiCard
             label="Lock-ins"
-            value={String(periodLockIns.length)}
-            delta={formatMomDelta(periodLockIns.length, prevLockIns.length, "number")}
+            value={String(lockInClientCount)}
+            delta={formatMomDelta(lockInClientCount, prevLockInClientCount, "number")}
             sub={
-              pendingLockIns.length
-                ? `${pendingLockIns.length} pending`
+              pendingLockInClientCount
+                ? `${pendingLockInClientCount} pending`
                 : "Confirmed this month"
             }
             source="Hub"
@@ -590,7 +591,7 @@ export default function ScoreboardPage() {
                 <h3 className="font-semibold">Confirmed lock-ins</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Confirmed clients this month for the current filter.
+                Staff bonuses for clients confirmed this month.
               </p>
               {periodLockIns.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">No confirmed lock-ins.</p>
