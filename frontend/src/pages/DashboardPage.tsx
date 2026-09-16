@@ -35,6 +35,7 @@ import {
   isPendingLockIn,
   lockInEventAt,
   pendingLockInEventAt,
+  uniqueLockInsByClient,
   rangeToVisitQuery,
   type LockInBonusRow,
   type VisitSummary,
@@ -193,22 +194,27 @@ export default function DashboardPage() {
 
   const pendingLockIns = useMemo(() => {
     if (!selected) return [];
-    return lockIns
-      .filter((row) => isPendingLockIn(row) && row.technician === selected.id)
-      .sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
+    return uniqueLockInsByClient(
+      lockIns.filter((row) => isPendingLockIn(row) && row.technician === selected.id),
+    ).sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
   }, [lockIns, selected]);
 
-  const periodLockIns = useMemo(() => {
+  const periodLockInRows = useMemo(() => {
     if (!selected) return [];
-    return lockIns
-      .filter((row) => {
-        if (!isConfirmedLockIn(row)) return false;
-        if (row.technician !== selected.id) return false;
-        return dateInRange(lockInEventAt(row), range);
-      })
-      .sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
+    return lockIns.filter((row) => {
+      if (!isConfirmedLockIn(row)) return false;
+      if (row.technician !== selected.id) return false;
+      return dateInRange(lockInEventAt(row), range);
+    });
   }, [lockIns, selected, range]);
-  const lockInAmount = periodLockIns.reduce((a, r) => a + r.amount, 0);
+  const periodLockIns = useMemo(
+    () =>
+      uniqueLockInsByClient(periodLockInRows).sort((a, b) =>
+        lockInEventAt(b).localeCompare(lockInEventAt(a)),
+      ),
+    [periodLockInRows],
+  );
+  const lockInAmount = periodLockInRows.reduce((a, r) => a + r.amount, 0);
 
   const shoutout = useMemo(() => {
     return (

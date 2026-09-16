@@ -2,9 +2,11 @@ import { api } from "./api";
 
 export type LockInBonusRow = {
   id: string;
+  pendingId: string;
   technician: string;
   technicianName: string;
   clientName: string;
+  clientJobberId: string;
   frequency: string;
   status: string;
   amount: number;
@@ -27,9 +29,11 @@ function num(v: unknown): number {
 function normalize(raw: Record<string, unknown>): LockInBonusRow {
   return {
     id: str(raw.id),
+    pendingId: str(raw.pending),
     technician: str(raw.technician),
     technicianName: str(raw.technician_name ?? raw.technicianName),
     clientName: str(raw.client_name ?? raw.clientName),
+    clientJobberId: str(raw.client_jobber_id ?? raw.clientJobberId),
     frequency: str(raw.frequency),
     status: str(raw.status),
     amount: num(raw.amount),
@@ -73,6 +77,26 @@ export function lockInEventAt(row: LockInBonusRow): string {
 
 export function pendingLockInEventAt(row: LockInBonusRow): string {
   return row.inProcessDate || row.createdAt;
+}
+
+function lockInClientKey(row: LockInBonusRow): string {
+  return (row.clientJobberId || row.pendingId || row.clientName || row.id).trim();
+}
+
+/** One row per client (latest first). Bonus payouts can still be many techs. */
+export function uniqueLockInsByClient(rows: LockInBonusRow[]): LockInBonusRow[] {
+  const seen = new Set<string>();
+  const out: LockInBonusRow[] = [];
+  const sorted = [...rows].sort((a, b) =>
+    lockInEventAt(b).localeCompare(lockInEventAt(a)),
+  );
+  for (const row of sorted) {
+    const key = lockInClientKey(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
 }
 
 export async function fetchLockInBonuses(): Promise<LockInBonusRow[]> {

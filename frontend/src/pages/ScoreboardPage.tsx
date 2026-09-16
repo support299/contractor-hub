@@ -20,6 +20,7 @@ import {
   isPendingLockIn,
   lockInEventAt,
   pendingLockInEventAt,
+  uniqueLockInsByClient,
   rangeToVisitQuery,
   type GoogleReviewRow,
   type LockInBonusRow,
@@ -189,26 +190,28 @@ export default function ScoreboardPage() {
   );
 
   const pendingLockIns = useMemo(() => {
-    return lockIns
-      .filter((row) => isPendingLockIn(row) && idSet.has(row.technician))
-      .sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
+    return uniqueLockInsByClient(
+      lockIns.filter((row) => isPendingLockIn(row) && idSet.has(row.technician)),
+    ).sort((a, b) => pendingLockInEventAt(b).localeCompare(pendingLockInEventAt(a)));
   }, [lockIns, idSet]);
 
   const periodLockIns = useMemo(() => {
-    return lockIns
-      .filter((row) => {
+    return uniqueLockInsByClient(
+      lockIns.filter((row) => {
         if (!isConfirmedLockIn(row)) return false;
         if (!idSet.has(row.technician)) return false;
         return dateInRange(lockInEventAt(row), range);
-      })
-      .sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
+      }),
+    ).sort((a, b) => lockInEventAt(b).localeCompare(lockInEventAt(a)));
   }, [lockIns, idSet, range]);
   const prevLockIns = useMemo(() => {
-    return lockIns.filter((row) => {
-      if (!isConfirmedLockIn(row)) return false;
-      if (!idSet.has(row.technician)) return false;
-      return dateInRange(lockInEventAt(row), prevRange);
-    });
+    return uniqueLockInsByClient(
+      lockIns.filter((row) => {
+        if (!isConfirmedLockIn(row)) return false;
+        if (!idSet.has(row.technician)) return false;
+        return dateInRange(lockInEventAt(row), prevRange);
+      }),
+    );
   }, [lockIns, idSet, prevRange]);
 
   const feedback = useMemo(
@@ -587,7 +590,7 @@ export default function ScoreboardPage() {
                 <h3 className="font-semibold">Confirmed lock-ins</h3>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Confirmed this month for the current filter.
+                Confirmed clients this month for the current filter.
               </p>
               {periodLockIns.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">No confirmed lock-ins.</p>
