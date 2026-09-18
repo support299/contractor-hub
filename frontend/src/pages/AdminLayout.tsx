@@ -30,7 +30,7 @@ export default function AdminLayout() {
   const roleLabel = (session?.role || "staff").toUpperCase();
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
-    { to: "/admin/quick-entry", label: "Quick Entry" },
+    ...(admin ? [{ to: "/admin/quick-entry", label: "Quick Entry" }] : []),
     ...(admin ? [{ to: "/admin/scoreboard", label: "Scoreboard" }] : []),
     { to: "/admin/payrolls", label: "Payrolls" },
     { to: "/admin/calendar", label: "Calendar" },
@@ -106,7 +106,7 @@ export default function AdminLayout() {
               ) : null}
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <QuickEntryHeaderButton />
+              {admin ? <QuickEntryHeaderButton /> : null}
               <NotificationBell />
               <Button
                 variant="outline"

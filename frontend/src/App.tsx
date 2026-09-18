@@ -50,11 +50,11 @@ export default function App() {
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
-                <Route path="quick-entry" element={<QuickEntryPage />} />
                 <Route path="payrolls" element={<PayrollsPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="resources" element={<ResourcesPage />} />
                 <Route element={<RequireAdmin />}>
+                  <Route path="quick-entry" element={<QuickEntryPage />} />
                   <Route path="scoreboard" element={<ScoreboardPage />} />
                   <Route path="data" element={<DataPage />} />
                   <Route path="settings" element={<SettingsPage />} />
