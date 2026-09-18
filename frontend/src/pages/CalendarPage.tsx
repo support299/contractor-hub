@@ -388,21 +388,21 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 h-[calc(100vh-180px)]">
-      {/* Calendar */}
-      <div className="flex flex-col min-h-0 bg-card border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-emerald-600" />
-            <h1 className="text-lg font-semibold">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 lg:h-[calc(100vh-180px)]">
+      {/* Calendar — below leave requests on mobile */}
+      <div className="order-2 lg:order-1 flex flex-col min-h-0 bg-card border rounded-xl overflow-hidden">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-3 sm:px-4 border-b">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <CalendarDays className="h-5 w-5 text-emerald-600 shrink-0" />
+            <h1 className="text-base sm:text-lg font-semibold truncate">
               {viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
             </h1>
-            <Button className="h-8 gap-2 ml-2" onClick={() => setSubmitOpen(true)}>
+            <Button className="h-8 gap-2 sm:ml-2" size="sm" onClick={() => setSubmitOpen(true)}>
               <FilePlus className="h-4 w-4" />
               {canApprove ? "Submit Record" : "Request time off"}
             </Button>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               variant="outline"
               size="sm"
@@ -434,10 +434,11 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 text-xs font-medium text-muted-foreground border-b">
+        <div className="grid grid-cols-7 text-[10px] sm:text-xs font-medium text-muted-foreground border-b">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-            <div key={d} className="px-2 py-2 text-center">
-              {d}
+            <div key={d} className="px-1 py-1.5 sm:px-2 sm:py-2 text-center">
+              <span className="sm:hidden">{d.slice(0, 1)}</span>
+              <span className="hidden sm:inline">{d}</span>
             </div>
           ))}
         </div>
@@ -451,13 +452,13 @@ export default function CalendarPage() {
             return (
               <div
                 key={i}
-                className={`border-b border-r p-1 min-h-[96px] flex flex-col gap-1 ${
+                className={`border-b border-r p-0.5 sm:p-1 min-h-[44px] sm:min-h-[72px] lg:min-h-[96px] flex flex-col gap-0.5 sm:gap-1 ${
                   inMonth ? "bg-background" : "bg-muted/40"
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span
-                    className={`text-xs font-medium ${
+                    className={`text-[10px] sm:text-xs font-medium ${
                       isToday
                         ? "bg-emerald-600 text-white rounded-full h-5 w-5 flex items-center justify-center"
                         : inMonth
@@ -474,12 +475,12 @@ export default function CalendarPage() {
                       key={idx}
                       type="button"
                       onClick={() => setConfirmDelete(it.req)}
-                      className={`text-[11px] leading-tight px-1.5 py-0.5 rounded border text-left truncate hover:opacity-80 ${colorFor(it.name)}`}
+                      className={`text-[10px] sm:text-[11px] leading-tight px-1 sm:px-1.5 py-0.5 rounded border text-left truncate hover:opacity-80 ${colorFor(it.name)}`}
                       title={`${it.name}${it.req.leaveType ? ` · ${it.req.leaveType}` : ""}`}
                     >
                       {it.name}
                       {it.req.leaveType ? (
-                        <span className="opacity-70"> · {it.req.leaveType}</span>
+                        <span className="opacity-70 hidden sm:inline"> · {it.req.leaveType}</span>
                       ) : null}
                     </button>
                   ))}
@@ -495,8 +496,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Sidebar */}
-      <div className="bg-card border rounded-xl flex flex-col min-h-0 overflow-hidden">
+      {/* Leave requests — first on mobile so approve/reject is above the fold */}
+      <div className="order-1 lg:order-2 bg-card border rounded-xl flex flex-col min-h-0 overflow-hidden max-h-[min(70vh,36rem)] lg:max-h-none">
         <div className="px-4 py-3 border-b">
           <h2 className="font-semibold">Leave Requests</h2>
           <p className="text-xs text-muted-foreground">
@@ -573,7 +574,7 @@ export default function CalendarPage() {
           )}
         </div>
 
-        <div className="flex-1 overflow-auto divide-y">
+        <div className="flex-1 overflow-auto divide-y min-h-[12rem]">
           {loading && (
             <div className="p-4 text-sm text-muted-foreground">Loading…</div>
           )}
@@ -624,7 +625,7 @@ export default function CalendarPage() {
                 Submitted {new Date(r.submission.createdAt).toLocaleString()}
               </div>
               {canApprove ? (
-              <div className="flex gap-1.5 pt-1">
+              <div className="flex flex-wrap gap-1.5 pt-1">
                 {r.status !== "approved" && (
                   <Button
                     size="sm"
