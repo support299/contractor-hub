@@ -335,14 +335,16 @@ export default function ScoreboardPage() {
             value={String(teamVisits)}
             delta={formatMomDelta(teamVisits, prevTeamVisits, "number")}
             source="Hub"
-            icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />}
+            tone="emerald"
+            icon={<CalendarCheck className="h-5 w-5" />}
           />
           <KpiCard
             label="Five-Star Reviews"
             value={String(fiveStarCount)}
             delta={formatMomDelta(fiveStarCount, prevFiveStarCount, "number")}
             source="Google"
-            icon={<Star className="h-4 w-4 text-amber-500" />}
+            tone="amber"
+            icon={<Star className="h-5 w-5" />}
           />
           <KpiCard
             label="Feedback Received"
@@ -350,7 +352,8 @@ export default function ScoreboardPage() {
             delta={formatMomDelta(feedback.length, prevFeedback.length, "number")}
             sub={feedbackSub}
             source="Hub"
-            icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+            tone="sky"
+            icon={<MessageSquare className="h-5 w-5" />}
           />
           <KpiCard
             label="Client Engagement"
@@ -364,7 +367,8 @@ export default function ScoreboardPage() {
             }
             sub="Feedback ÷ visits"
             source="Hub"
-            icon={<Percent className="h-4 w-4 text-muted-foreground" />}
+            tone="violet"
+            icon={<Percent className="h-5 w-5" />}
           />
           <KpiCard
             label="Average Rating"
@@ -380,7 +384,8 @@ export default function ScoreboardPage() {
                 : undefined
             }
             source="Hub"
-            icon={<Star className="h-4 w-4 text-amber-500" />}
+            tone="rose"
+            icon={<Star className="h-5 w-5" />}
           />
           <KpiCard
             label="Lock-ins"
@@ -392,7 +397,8 @@ export default function ScoreboardPage() {
                 : "Confirmed this month"
             }
             source="Hub"
-            icon={<Lock className="h-4 w-4 text-muted-foreground" />}
+            tone="teal"
+            icon={<Lock className="h-5 w-5" />}
           />
         </div>
 
@@ -663,6 +669,47 @@ function LockInListRow({
   );
 }
 
+const KPI_TONES = {
+  emerald: {
+    card: "border-emerald-200 bg-gradient-to-br from-emerald-50 via-card to-card shadow-emerald-100/80",
+    label: "text-emerald-800",
+    value: "text-emerald-700",
+    icon: "bg-emerald-100 text-emerald-700",
+  },
+  amber: {
+    card: "border-amber-200 bg-gradient-to-br from-amber-50 via-card to-card shadow-amber-100/80",
+    label: "text-amber-900",
+    value: "text-amber-600",
+    icon: "bg-amber-100 text-amber-600",
+  },
+  sky: {
+    card: "border-sky-200 bg-gradient-to-br from-sky-50 via-card to-card shadow-sky-100/80",
+    label: "text-sky-800",
+    value: "text-sky-700",
+    icon: "bg-sky-100 text-sky-700",
+  },
+  violet: {
+    card: "border-violet-200 bg-gradient-to-br from-violet-50 via-card to-card shadow-violet-100/80",
+    label: "text-violet-800",
+    value: "text-violet-700",
+    icon: "bg-violet-100 text-violet-700",
+  },
+  rose: {
+    card: "border-rose-200 bg-gradient-to-br from-rose-50 via-card to-card shadow-rose-100/80",
+    label: "text-rose-800",
+    value: "text-rose-600",
+    icon: "bg-rose-100 text-rose-600",
+  },
+  teal: {
+    card: "border-teal-200 bg-gradient-to-br from-teal-50 via-card to-card shadow-teal-100/80",
+    label: "text-teal-800",
+    value: "text-teal-700",
+    icon: "bg-teal-100 text-teal-700",
+  },
+} as const;
+
+type KpiTone = keyof typeof KPI_TONES;
+
 function KpiCard({
   label,
   value,
@@ -670,6 +717,7 @@ function KpiCard({
   sub,
   source,
   icon,
+  tone,
 }: {
   label: string;
   value: string;
@@ -677,7 +725,9 @@ function KpiCard({
   sub?: string;
   source: "Google" | "Hub";
   icon: React.ReactNode;
+  tone: KpiTone;
 }) {
+  const colors = KPI_TONES[tone];
   const deltaClass =
     delta.direction === "up"
       ? "text-emerald-600"
@@ -685,14 +735,18 @@ function KpiCard({
         ? "text-red-600"
         : "text-muted-foreground";
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        {icon}
+    <div className={cn("rounded-xl border p-5 shadow-sm", colors.card)}>
+      <div className="flex items-center justify-between gap-3">
+        <p className={cn("text-sm font-medium", colors.label)}>{label}</p>
+        <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", colors.icon)}>
+          {icon}
+        </div>
       </div>
-      <p className="text-3xl font-bold mt-2 tabular-nums">{value}</p>
-      <p className={`text-xs mt-2 font-medium ${deltaClass}`}>{delta.text}</p>
-      {sub ? <p className="text-[11px] text-muted-foreground mt-1">{sub}</p> : null}
+      <p className={cn("text-5xl font-extrabold mt-3 tabular-nums tracking-tight leading-none", colors.value)}>
+        {value}
+      </p>
+      <p className={`text-sm mt-3 font-semibold ${deltaClass}`}>{delta.text}</p>
+      {sub ? <p className="text-xs text-muted-foreground mt-1">{sub}</p> : null}
       <p className="text-[11px] text-muted-foreground mt-1">From {source}</p>
     </div>
   );
@@ -745,8 +799,8 @@ function LeaderRow({
         </p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold">{visits}</p>
-        <p className="text-[10px] text-muted-foreground">visits</p>
+        <p className="text-xl font-extrabold tabular-nums text-emerald-700">{visits}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700/70">visits</p>
       </div>
     </div>
   );

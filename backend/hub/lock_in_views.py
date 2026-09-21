@@ -180,6 +180,10 @@ class HubVisitViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(Q(start_at__gte=start) | Q(start_at__isnull=True, created_at__gte=start))
         if end:
             qs = qs.filter(Q(start_at__lte=end) | Q(start_at__isnull=True, created_at__lte=end))
+        # Internal company jobs are not client visits for scoreboard / dashboard counts.
+        qs = qs.exclude(
+            Q(client_name__iexact="Clean on the Go") | Q(title__iexact="Clean on the Go")
+        )
 
         total = qs.count()
         by_technician = {}

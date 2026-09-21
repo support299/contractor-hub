@@ -1193,6 +1193,13 @@ class VisitSummaryPermissionTests(TestCase):
             start_at=datetime(2026, 8, 2, 10, 0, tzinfo=dt_timezone.utc),
         )
         out_of_range.technicians.set([self.employee])
+        internal = HubVisit.objects.create(
+            jobber_visit_id="dash-v-internal",
+            client_name="Clean on the Go",
+            title="Clean on the Go",
+            start_at=datetime(2026, 9, 15, 10, 0, tzinfo=dt_timezone.utc),
+        )
+        internal.technicians.set([self.employee])
 
         self.emp_client = APIClient()
         self.emp_client.credentials(
@@ -1228,6 +1235,18 @@ class VisitSummaryPermissionTests(TestCase):
         self.assertEqual(res.data["total"], 2)
         self.assertEqual(res.data["by_technician"][str(self.employee.id)], 1)
         self.assertEqual(res.data["by_technician"][str(self.other.id)], 1)
+
+    def test_summary_excludes_clean_on_the_go_client(self):
+        res = self.admin_client.get(
+            "/api/visits/summary/",
+            {
+                "start_at_after": "2026-09-01T00:00:00Z",
+                "start_at_before": "2026-09-30T23:59:59Z",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["total"], 2)
+        self.assertEqual(res.data["by_technician"][str(self.employee.id)], 1)
 
 
 class DisplayRolePermissionTests(TestCase):
