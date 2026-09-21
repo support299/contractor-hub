@@ -5,6 +5,7 @@ import { useUsers, type HubUser } from "@/lib/hub-store";
 import { Pencil, Plus, UserCircle2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AlertsManager } from "@/components/admin/AlertsManager";
+import { EmailNotifyManager } from "@/components/admin/EmailNotifyManager";
 import { FormsSection } from "@/components/admin/FormsSection";
 import { UserFormDialog } from "@/components/UserFormDialog";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -31,15 +32,16 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm text-muted-foreground">Manage users and hub alerts.</p>
+          <p className="text-sm text-muted-foreground">Manage users, alerts, and email notifications.</p>
         </div>
       </div>
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="forms">Forms</TabsTrigger>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
+          <TabsTrigger value="emails">Email notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="space-y-4 mt-4">
@@ -184,6 +186,10 @@ export default function SettingsPage() {
 
         <TabsContent value="alerts" className="mt-4">
           <AlertsManager />
+        </TabsContent>
+
+        <TabsContent value="emails" className="mt-4">
+          <EmailNotifyManager />
         </TabsContent>
       </Tabs>
 

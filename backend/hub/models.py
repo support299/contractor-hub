@@ -337,6 +337,40 @@ class HubAlert(TimeStampedModel):
         return self.message[:60]
 
 
+class HubNotificationEmail(TimeStampedModel):
+    """Addresses that also receive Hub in-app alerts (via GHL Conversations email)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)
+    label = models.CharField(max_length=128, blank=True, default="")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["email"]
+
+    def __str__(self) -> str:
+        return self.email
+
+
+class HubNotificationEmailLog(models.Model):
+    """Idempotency for outbound GHL emails (one send per event + address)."""
+
+    event_key = models.CharField(max_length=191)
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event_key", "email"],
+                name="hub_notify_email_log_event_email",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_key} → {self.email}"
+
+
 class HubVisit(TimeStampedModel):
     """Jobber visit persistence (replaces Airtable Visits for lock-in)."""
 

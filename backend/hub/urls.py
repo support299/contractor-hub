@@ -24,6 +24,11 @@ router.register(
 )
 router.register(r"documents", views.HubDocumentViewSet, basename="hub-documents")
 router.register(r"alerts", views.HubAlertViewSet, basename="hub-alerts")
+router.register(
+    r"notification-emails",
+    views.HubNotificationEmailViewSet,
+    basename="hub-notification-emails",
+)
 router.register(r"visits", lock_in_views.HubVisitViewSet, basename="hub-visits")
 router.register(
     r"pending-lock-ins", lock_in_views.PendingLockInViewSet, basename="pending-lock-ins"

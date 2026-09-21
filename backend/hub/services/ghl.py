@@ -290,6 +290,126 @@ def set_login_otp(contact_id: str, otp: str, location_id: str | None = None) -> 
         return False
 
 
+def upsert_contact_by_email(
+    email: str,
+    *,
+    name: str = "",
+    location_id: str | None = None,
+) -> str | None:
+    """Create or find contact by email; return contact id."""
+    email_norm = (email or "").strip()
+    if not email_norm:
+        return None
+    loc = location_id or _location_id()
+    found = search_contact_by_email(email_norm, loc)
+    if found and found.get("id"):
+        return str(found["id"])
+
+    headers = _headers()
+    payload: dict[str, Any] = {
+        "email": email_norm,
+        "source": "contractor-hub",
+        "locationId": loc,
+    }
+    display = (name or "").strip() or email_norm.split("@")[0]
+    parts = display.split(None, 1)
+    payload["firstName"] = parts[0][:50]
+    if len(parts) > 1:
+        payload["lastName"] = parts[1][:50]
+    payload["name"] = display[:100]
+
+    try:
+        resp = requests.post(
+            f"{_base_url()}/contacts/",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            return (data.get("contact") or {}).get("id") or data.get("id")
+
+        if resp.status_code == 400 and "duplicated contacts" in resp.text.lower():
+            contact_id = (resp.json().get("meta") or {}).get("contactId")
+            if contact_id:
+                return str(contact_id)
+            found = search_contact_by_email(email_norm, loc)
+            if found and found.get("id"):
+                return str(found["id"])
+
+        logger.error(
+            "GHL upsert contact by email failed: %s %s",
+            resp.status_code,
+            resp.text[:500],
+        )
+        return None
+    except requests.RequestException as exc:
+        logger.error("GHL upsert contact by email error: %s", exc)
+        return None
+
+
+def send_conversation_email(
+    *,
+    email: str,
+    subject: str,
+    html: str,
+    message: str = "",
+    name: str = "",
+) -> bool:
+    """Send an email via GHL Conversations. Returns True on HTTP 200/201."""
+    to = (email or "").strip()
+    subject = (subject or "").strip()
+    html = (html or "").strip()
+    text = (message or "").strip() or subject
+    if not to or not subject or not html:
+        logger.warning("GHL email skip: missing to/subject/html")
+        return False
+
+    try:
+        contact_id = upsert_contact_by_email(to, name=name)
+        if not contact_id:
+            logger.error("GHL email: no contact id for %s", to)
+            return False
+
+        headers = _headers()
+        headers["Version"] = getattr(
+            settings, "GHL_CONVERSATIONS_API_VERSION", "2021-04-15"
+        )
+        payload: dict[str, Any] = {
+            "type": "Email",
+            "contactId": contact_id,
+            "subject": subject[:255],
+            "html": html,
+            "message": text[:5000],
+            "emailTo": to,
+        }
+        email_from = (getattr(settings, "GHL_EMAIL_FROM", "") or "").strip()
+        if email_from:
+            payload["emailFrom"] = email_from
+
+        resp = requests.post(
+            f"{_base_url()}/conversations/messages",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            return True
+        logger.error(
+            "GHL Conversations email failed for %s: %s %s",
+            to,
+            resp.status_code,
+            resp.text[:500],
+        )
+        return False
+    except GHLConfigError:
+        logger.exception("GHL email config error for %s", to)
+        return False
+    except requests.RequestException as exc:
+        logger.error("GHL email request error for %s: %s", to, exc)
+        return False
+
+
 def send_conversation_sms(hub_user: HubUser, message: str) -> bool:
     """Send an SMS via GHL Conversations. Returns True on HTTP 200/201."""
     text = (message or "").strip()

@@ -78,6 +78,14 @@ def notify_leave_submitted(submission: HubFormSubmission) -> None:
                     TYPE_SUBMITTED, submission.id, admin.id
                 ),
             )
+        from hub.services.notify_email import send_designated_notification_emails
+
+        send_designated_notification_emails(
+            event_key=event_key_for(TYPE_SUBMITTED, submission.id, "email"),
+            title="New leave request",
+            body=body,
+            link=LEAVE_CALENDAR_PATH,
+        )
     except Exception:
         logger.exception(
             "Leave submitted notify failed for submission %s",

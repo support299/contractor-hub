@@ -175,6 +175,51 @@ class LeaveNotificationTests(TestCase):
         notify_leave_decision(approval, HubLeaveApproval.Status.APPROVED)
         self.assertEqual(HubNotification.objects.count(), 0)
 
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_submit_emails_designated_addresses_once(self, mock_send):
+        from hub.models import HubNotificationEmail, HubNotificationEmailLog
+        from hub.services.leave_notify import notify_leave_submitted
+
+        HubNotificationEmail.objects.create(email="boss@cotg.com", label="Peter")
+        HubNotificationEmail.objects.create(
+            email="off@cotg.com", active=False
+        )
+        sub = self._submit()
+        notify_leave_submitted(sub)
+        notify_leave_submitted(sub)
+        self.assertEqual(mock_send.call_count, 1)
+        kwargs = mock_send.call_args.kwargs
+        self.assertEqual(kwargs["email"], "boss@cotg.com")
+        self.assertEqual(kwargs["subject"], "New leave request")
+        self.assertIn("Jane Doe submitted a Vacation request", kwargs["message"])
+        self.assertIn("/admin/calendar", kwargs["html"])
+        self.assertEqual(
+            HubNotificationEmailLog.objects.filter(email="boss@cotg.com").count(),
+            1,
+        )
+
+    @patch("hub.services.notify_email.send_conversation_email")
+    def test_email_failure_does_not_block_in_app(self, mock_send):
+        from hub.models import HubNotification, HubNotificationEmail
+        from hub.services.leave_notify import notify_leave_submitted
+
+        mock_send.return_value = False
+        HubNotificationEmail.objects.create(email="boss@cotg.com")
+        sub = self._submit()
+        notify_leave_submitted(sub)
+        self.assertEqual(
+            HubNotification.objects.filter(type="leave_submitted").count(), 1
+        )
+        notify_leave_submitted(sub)
+        self.assertEqual(mock_send.call_count, 2)
+
+    @patch("hub.services.notify_email.send_conversation_email")
+    def test_no_emails_skips_ghl(self, mock_send):
+        from hub.services.leave_notify import notify_leave_submitted
+
+        notify_leave_submitted(self._submit())
+        mock_send.assert_not_called()
+
 
 class NotificationApiTests(TestCase):
     def setUp(self):
@@ -1483,6 +1528,69 @@ class GoogleReviewSummaryApiTests(TestCase):
 
     def test_staff_forbidden(self):
         res = self.emp_client.get("/api/reviews/google-summary/")
+        self.assertEqual(res.status_code, 403)
+
+
+class NotificationEmailApiTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.admin = HubUser.objects.create(
+            name="Email Admin",
+            email="email-admin@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+        self.employee = HubUser.objects.create(
+            name="Email Staff",
+            email="email-staff@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.admin_client = APIClient()
+        self.admin_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.admin)['access']}"
+        )
+        self.emp_client = APIClient()
+        self.emp_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+
+    def test_admin_can_crud(self):
+        res = self.admin_client.post(
+            "/api/notification-emails/",
+            {"email": "Peter@CleanOnTheGo.com", "label": "Peter"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data["email"], "peter@cleanonthego.com")
+        row_id = res.data["id"]
+
+        listing = self.admin_client.get("/api/notification-emails/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(len(listing.data), 1)
+
+        dup = self.admin_client.post(
+            "/api/notification-emails/",
+            {"email": "peter@cleanonthego.com"},
+            format="json",
+        )
+        self.assertEqual(dup.status_code, 400)
+
+        off = self.admin_client.patch(
+            f"/api/notification-emails/{row_id}/",
+            {"active": False},
+            format="json",
+        )
+        self.assertEqual(off.status_code, 200)
+        self.assertFalse(off.data["active"])
+
+        gone = self.admin_client.delete(f"/api/notification-emails/{row_id}/")
+        self.assertEqual(gone.status_code, 204)
+
+    def test_staff_cannot_list(self):
+        res = self.emp_client.get("/api/notification-emails/")
         self.assertEqual(res.status_code, 403)
 
 

@@ -8,6 +8,7 @@ from .models import (
     HubFormSubmission,
     HubLeaveApproval,
     HubNotification,
+    HubNotificationEmail,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -477,6 +478,35 @@ class HubAlertSerializer(serializers.ModelSerializer):
             "message": instance.message,
             "active": instance.active,
             "sortOrder": instance.sort_order,
+            "createdAt": instance.created_at.isoformat() if instance.created_at else None,
+        }
+
+
+class HubNotificationEmailSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = HubNotificationEmail
+        fields = ["id", "email", "label", "active", "createdAt", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "createdAt"]
+
+    def validate_email(self, value):
+        email = (value or "").strip().lower()
+        if not email:
+            raise serializers.ValidationError("Email is required.")
+        qs = HubNotificationEmail.objects.filter(email__iexact=email)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("That email is already on the list.")
+        return email
+
+    def to_representation(self, instance):
+        return {
+            "id": str(instance.id),
+            "email": instance.email,
+            "label": instance.label or "",
+            "active": instance.active,
             "createdAt": instance.created_at.isoformat() if instance.created_at else None,
         }
 

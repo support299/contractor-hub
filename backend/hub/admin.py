@@ -11,6 +11,8 @@ from .models import (
     HubLeaveApproval,
     HubTipConfirmLog,
     HubNotification,
+    HubNotificationEmail,
+    HubNotificationEmailLog,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -95,6 +97,20 @@ class HubDocumentAdmin(admin.ModelAdmin):
 class HubAlertAdmin(admin.ModelAdmin):
     list_display = ("message", "active", "sort_order", "created_at")
     list_filter = ("active",)
+
+
+@admin.register(HubNotificationEmail)
+class HubNotificationEmailAdmin(admin.ModelAdmin):
+    list_display = ("email", "label", "active", "created_at")
+    list_filter = ("active",)
+    search_fields = ("email", "label")
+
+
+@admin.register(HubNotificationEmailLog)
+class HubNotificationEmailLogAdmin(admin.ModelAdmin):
+    list_display = ("email", "event_key", "created_at")
+    search_fields = ("email", "event_key")
+    readonly_fields = ("event_key", "email", "created_at")
 
 
 @admin.register(HubVisit)

@@ -22,6 +22,7 @@ from .models import (
     HubFormSubmission,
     HubLeaveApproval,
     HubNotification,
+    HubNotificationEmail,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -48,6 +49,7 @@ from .serializers import (
     HubFormSubmissionSerializer,
     HubLeaveApprovalSerializer,
     HubNotificationSerializer,
+    HubNotificationEmailSerializer,
     HubResourceFolderSerializer,
     HubTrainingMaterialSerializer,
     HubUserDirectorySerializer,
@@ -833,6 +835,13 @@ class HubAlertViewSet(viewsets.ModelViewSet):
     def active(self, request):
         qs = self.get_queryset().filter(active=True)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class HubNotificationEmailViewSet(viewsets.ModelViewSet):
+    queryset = HubNotificationEmail.objects.all()
+    serializer_class = HubNotificationEmailSerializer
+    pagination_class = None
+    permission_classes = [IsAdminRole]
 
 
 # ---------- Uploads ----------
