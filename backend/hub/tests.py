@@ -134,7 +134,8 @@ class LeaveNotificationTests(TestCase):
         self.assertIn("Jane Doe submitted a Vacation request (Aug 10–17)", n.body)
         self.assertEqual(n.link, "/admin/calendar")
 
-    def test_approve_notifies_employee_once(self):
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_approve_notifies_employee_once(self, mock_send):
         from hub.models import HubLeaveApproval, HubNotification
         from hub.services.leave_notify import notify_leave_decision
 
@@ -151,8 +152,12 @@ class LeaveNotificationTests(TestCase):
             qs.get().body,
             "Your Vacation request (Aug 10–17) was approved.",
         )
+        self.assertEqual(mock_send.call_count, 1)
+        self.assertEqual(mock_send.call_args.kwargs["email"], "jane@test.local")
+        self.assertEqual(mock_send.call_args.kwargs["subject"], "Leave approved")
 
-    def test_reject_copy(self):
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_reject_copy(self, mock_send):
         from hub.models import HubLeaveApproval, HubNotification
         from hub.services.leave_notify import notify_leave_decision
 
@@ -163,8 +168,12 @@ class LeaveNotificationTests(TestCase):
         notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
         n = HubNotification.objects.get(type="leave_rejected")
         self.assertEqual(n.body, "Your Absent request (Aug 10–12) was rejected.")
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.kwargs["email"], "jane@test.local")
+        self.assertEqual(mock_send.call_args.kwargs["subject"], "Leave rejected")
 
-    def test_same_status_patch_skips(self):
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_same_status_patch_skips(self, mock_send):
         from hub.models import HubLeaveApproval, HubNotification
         from hub.services.leave_notify import notify_leave_decision
 
@@ -752,6 +761,23 @@ class TipConfirmAutomationTests(TestCase):
         self.assertEqual(n.link, "/admin/data")
         self.assertTrue(HubTipConfirmLog.objects.filter(submission=sub).exists())
 
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.tip_confirm.send_conversation_sms", return_value=True)
+    def test_confirmed_emails_techs_with_address(self, _sms, mock_email):
+        from hub.models import HubFormSubmission
+        from hub.services.tip_confirm import maybe_run_tip_confirm
+
+        self.tech1.email = "alex@test.local"
+        self.tech1.save(update_fields=["email"])
+        sub = HubFormSubmission.objects.create(
+            form=self.form, answers=self._answers("Yes")
+        )
+        self.assertTrue(maybe_run_tip_confirm(sub))
+        maybe_run_tip_confirm(sub)
+        self.assertEqual(mock_email.call_count, 1)
+        self.assertEqual(mock_email.call_args.kwargs["email"], "alex@test.local")
+        self.assertIn("Jane Client", mock_email.call_args.kwargs["message"])
+
     def test_create_then_confirm_via_api(self):
         from unittest.mock import patch
 
@@ -821,6 +847,89 @@ class TipConfirmAutomationTests(TestCase):
         ):
             self.assertTrue(maybe_run_tip_confirm(sub))
         self.assertEqual(HubNotification.objects.filter(type="tip_confirmed").count(), 2)
+
+
+class FeedbackNotifyTests(TestCase):
+    def setUp(self):
+        from hub.models import HubForm, HubUser
+
+        self.form = HubForm.objects.create(
+            name="How are we doing?",
+            slug="how-are-we-doing",
+            fields=[
+                {"id": "u", "type": "users", "label": "Cleaners"},
+                {"id": "c", "type": "short_text", "label": "Your name"},
+            ],
+        )
+        self.tech = HubUser.objects.create(
+            name="Alex Cleaner",
+            email="alex-fb@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.other = HubUser.objects.create(
+            name="Pat Lead",
+            email="pat-fb@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.admin = HubUser.objects.create(
+            name="Boss",
+            email="boss-fb@test.local",
+            role=HubUser.Role.ADMIN,
+        )
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_named_staff_get_in_app_and_email(self, mock_send):
+        from hub.models import HubFormSubmission, HubNotification
+        from hub.services.feedback_notify import maybe_notify_feedback
+
+        sub = HubFormSubmission.objects.create(
+            form=self.form,
+            answers={"u": [str(self.tech.id)], "c": "Jane"},
+        )
+        maybe_notify_feedback(sub)
+        maybe_notify_feedback(sub)
+        qs = HubNotification.objects.filter(type="client_feedback")
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.get().recipient_id, self.tech.id)
+        self.assertEqual(qs.get().link, "/admin/dashboard")
+        self.assertEqual(mock_send.call_count, 1)
+        self.assertEqual(mock_send.call_args.kwargs["email"], "alex-fb@test.local")
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_skips_admins_and_unnamed(self, mock_send):
+        from hub.models import HubFormSubmission, HubNotification
+        from hub.services.feedback_notify import maybe_notify_feedback
+
+        sub = HubFormSubmission.objects.create(
+            form=self.form,
+            answers={"u": [str(self.admin.id)], "c": "Jane"},
+        )
+        maybe_notify_feedback(sub)
+        self.assertEqual(HubNotification.objects.count(), 0)
+        mock_send.assert_not_called()
+
+        empty = HubFormSubmission.objects.create(
+            form=self.form, answers={"u": [], "c": "Jane"}
+        )
+        maybe_notify_feedback(empty)
+        self.assertEqual(HubNotification.objects.count(), 0)
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    def test_payroll_slug_skipped(self, mock_send):
+        from hub.models import HubForm, HubFormSubmission, HubNotification
+        from hub.services.feedback_notify import maybe_notify_feedback
+
+        form = HubForm.objects.create(
+            name="Payroll",
+            slug="new-payroll-records",
+            fields=[{"id": "u", "type": "users", "label": "Staff"}],
+        )
+        sub = HubFormSubmission.objects.create(
+            form=form, answers={"u": [str(self.tech.id)]}
+        )
+        maybe_notify_feedback(sub)
+        self.assertEqual(HubNotification.objects.count(), 0)
+        mock_send.assert_not_called()
 
 
 class PhoneFromContactTests(SimpleTestCase):

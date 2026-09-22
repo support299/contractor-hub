@@ -12,6 +12,7 @@ from django.db import IntegrityError, transaction
 from hub.models import HubForm, HubFormSubmission, HubTipConfirmLog, HubUser
 from hub.services.ghl import send_conversation_sms
 from hub.services.notify import event_key_for, notify_user
+from hub.services.notify_email import send_user_notification_email
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,13 @@ def _run_automation(submission: HubFormSubmission, parsed: dict) -> None:
                 "technician_id": str(tech.id),
             },
             event_key=event_key_for(TYPE_TIP_CONFIRMED, submission.id, tech.id),
+        )
+        send_user_notification_email(
+            tech,
+            event_key=event_key_for(TYPE_TIP_CONFIRMED, submission.id, tech.id, "email"),
+            title="New Tip! 🎉",
+            body=_in_app_body(amount, client_name),
+            link=TIPS_DATA_PATH,
         )
         try:
             ok = send_conversation_sms(tech, _sms_body(tech, amount, client_name))

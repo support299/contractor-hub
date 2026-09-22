@@ -88,7 +88,8 @@ export function EmailNotifyManager() {
         <h2 className="font-semibold">Email notifications</h2>
         <p className="text-xs text-muted-foreground mt-1">
           These addresses also get an email when someone submits a time-off request.
-          Mail goes through GoHighLevel Conversations.
+          Staff get their own Hub emails for leave decisions, tips, and client
+          feedback. Mail goes through GoHighLevel Conversations.
         </p>
       </div>
 

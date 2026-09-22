@@ -121,6 +121,9 @@ def notify_leave_decision(approval: HubLeaveApproval, previous_status: str) -> N
 
         kind, dates = _kind_and_dates(parsed)
         body = f"Your {_request_phrase(kind, dates)} was {verb}."
+        event_key = event_key_for(
+            ntype, approval.submission_id, previous_status, new_status
+        )
         notify_user(
             employee,
             type=ntype,
@@ -128,9 +131,16 @@ def notify_leave_decision(approval: HubLeaveApproval, previous_status: str) -> N
             body=body,
             link=LEAVE_CALENDAR_PATH,
             payload=_payload(approval.submission, parsed),
-            event_key=event_key_for(
-                ntype, approval.submission_id, previous_status, new_status
-            ),
+            event_key=event_key,
+        )
+        from hub.services.notify_email import send_user_notification_email
+
+        send_user_notification_email(
+            employee,
+            event_key=event_key_for(ntype, approval.submission_id, "email"),
+            title=title,
+            body=body,
+            link=LEAVE_CALENDAR_PATH,
         )
     except Exception:
         logger.exception(

@@ -8,7 +8,7 @@ import logging
 from django.conf import settings
 from django.db import IntegrityError
 
-from hub.models import HubNotificationEmail, HubNotificationEmailLog
+from hub.models import HubNotificationEmail, HubNotificationEmailLog, HubUser
 from hub.services.ghl import send_conversation_email
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,51 @@ def _html_body(body: str, link: str) -> str:
     return f"<p>{safe}</p>{extra}"
 
 
+def _deliver_email(
+    *,
+    email: str,
+    event_key: str,
+    title: str,
+    body: str,
+    link: str = "",
+    name: str = "",
+) -> None:
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    try:
+        log, created = HubNotificationEmailLog.objects.get_or_create(
+            event_key=event_key[:191],
+            email=email,
+        )
+    except IntegrityError:
+        return
+    except Exception:
+        logger.exception("Email log failed for %s", email)
+        return
+    if not created:
+        return
+    try:
+        ok = send_conversation_email(
+            email=email,
+            subject=title,
+            html=_html_body(body, link),
+            message=body,
+            name=(name or "").strip(),
+        )
+        if not ok:
+            logger.warning(
+                "GHL email not sent type event=%s to=%s", event_key, email
+            )
+            log.delete()
+    except Exception:
+        logger.exception("GHL email crashed for %s", email)
+        try:
+            log.delete()
+        except Exception:
+            pass
+
+
 def send_designated_notification_emails(
     *,
     event_key: str,
@@ -56,39 +101,36 @@ def send_designated_notification_emails(
     if not recipients:
         return
 
-    html_body = _html_body(body, link)
     for row in recipients:
-        email = (row.email or "").strip().lower()
-        if not email:
-            continue
-        try:
-            log, created = HubNotificationEmailLog.objects.get_or_create(
-                event_key=event_key[:191],
-                email=email,
-            )
-        except IntegrityError:
-            continue
-        except Exception:
-            logger.exception("Email log failed for %s", email)
-            continue
-        if not created:
-            continue
-        try:
-            ok = send_conversation_email(
-                email=email,
-                subject=title,
-                html=html_body,
-                message=body,
-                name=(row.label or "").strip(),
-            )
-            if not ok:
-                logger.warning(
-                    "GHL email not sent type event=%s to=%s", event_key, email
-                )
-                log.delete()
-        except Exception:
-            logger.exception("GHL email crashed for %s", email)
-            try:
-                log.delete()
-            except Exception:
-                pass
+        _deliver_email(
+            email=row.email,
+            event_key=event_key,
+            title=title,
+            body=body,
+            link=link,
+            name=(row.label or "").strip(),
+        )
+
+
+def send_user_notification_email(
+    user: HubUser | None,
+    *,
+    event_key: str,
+    title: str,
+    body: str,
+    link: str = "",
+) -> None:
+    """Email a Hub user's work address. No-op if missing. Deduped by event_key + email."""
+    if user is None:
+        return
+    email = (user.email or "").strip()
+    if not email:
+        return
+    _deliver_email(
+        email=email,
+        event_key=event_key,
+        title=title,
+        body=body,
+        link=link,
+        name=(user.name or "").strip(),
+    )
