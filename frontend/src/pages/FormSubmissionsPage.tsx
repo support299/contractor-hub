@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Pencil, Star, Trash2, X } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -409,8 +409,8 @@ function EditSubmissionDialog({
   const fields = form.fields.filter(isAnswerField);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto relative">
         <DialogHeader>
           <DialogTitle>Edit submission</DialogTitle>
         </DialogHeader>
@@ -427,16 +427,23 @@ function EditSubmissionDialog({
           ))}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={saving}
           >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>
+        {saving ? (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/80">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <p className="text-sm font-medium">Saving… this can take a few seconds</p>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

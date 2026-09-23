@@ -118,7 +118,7 @@ export function FormSubmitDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col relative">
         <DialogHeader>
           <DialogTitle>{title ?? form?.name ?? "Submit"}</DialogTitle>
           {form?.description && <DialogDescription>{form.description}</DialogDescription>}
@@ -129,7 +129,10 @@ export function FormSubmitDialog({
           data-scroll-lock-scrollable=""
         >
           {loading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading…</div>
+            <div className="py-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+              Loading…
+            </div>
           ) : !form ? (
             <div className="py-10 text-center text-sm text-muted-foreground">Form not found.</div>
           ) : (
@@ -154,10 +157,16 @@ export function FormSubmitDialog({
             Cancel
           </Button>
           <Button type="submit" form="form-submit-dialog" disabled={submitting || !form}>
-            {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Submit
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Submitting…" : "Submit"}
           </Button>
         </DialogFooter>
+        {submitting ? (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/80">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+            <p className="text-sm font-medium">Submitting… this can take a few seconds</p>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

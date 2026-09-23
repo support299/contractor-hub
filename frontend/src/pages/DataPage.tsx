@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
   Save,
   Pencil,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -370,6 +371,8 @@ function FormDataTable({ form }: FormDataTableProps) {
   const isLeaveForm = form.slug === LEAVE_FORM_SLUG;
   const isPayrollForm = isPayrollRecordsSlug(form.slug);
   const [approvals, setApprovals] = useState<Record<string, LeaveApproval>>({});
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
   // Reload submissions when form changes
   useEffect(() => {
@@ -415,6 +418,7 @@ function FormDataTable({ form }: FormDataTableProps) {
   }, [isLeaveForm, form.id]);
 
   const setApprovalStatus = async (submissionId: string, status: ApprovalStatus) => {
+    setBusyApprovalId(submissionId);
     setApprovals((m) => ({
       ...m,
       [submissionId]: { ...(m[submissionId] ?? { submission_id: submissionId, decided_at: null }), status },
@@ -428,6 +432,8 @@ function FormDataTable({ form }: FormDataTableProps) {
       }
     } catch {
       toast.error("Could not update approval status");
+    } finally {
+      setBusyApprovalId(null);
     }
   };
 
@@ -554,11 +560,14 @@ function FormDataTable({ form }: FormDataTableProps) {
     setSubmissions((list) =>
       list.map((x) => (x.id === sub.id ? { ...x, answers: nextAnswers } : x)),
     );
+    setSavingRowId(sub.id);
     try {
       await updateSubmission(sub.id, nextAnswers);
     } catch {
       toast.error("Could not save change");
       reload();
+    } finally {
+      setSavingRowId(null);
     }
   };
 
@@ -834,7 +843,12 @@ function FormDataTable({ form }: FormDataTableProps) {
             {visibleRows.map((s) => (
               <tr key={s.id} className="border-t align-top">
                 <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                  {new Date(s.createdAt).toLocaleString()}
+                  <span className="inline-flex items-center gap-1.5">
+                    {savingRowId === s.id && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />
+                    )}
+                    {new Date(s.createdAt).toLocaleString()}
+                  </span>
                 </td>
                 {allColumns.map(({ field }) => (
                   <td key={field.id} className="px-2 py-1.5">
@@ -850,9 +864,11 @@ function FormDataTable({ form }: FormDataTableProps) {
                 {isLeaveForm && (
                   <td className="px-2 py-1.5">
                     {canApproveLeave ? (
+                    <div className="flex items-center gap-1.5">
                     <Select
                       value={approvals[s.id]?.status ?? "pending"}
                       onValueChange={(v) => setApprovalStatus(s.id, v as ApprovalStatus)}
+                      disabled={busyApprovalId === s.id}
                     >
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue />
@@ -863,6 +879,10 @@ function FormDataTable({ form }: FormDataTableProps) {
                         <SelectItem value="rejected">Rejected</SelectItem>
                       </SelectContent>
                     </Select>
+                    {busyApprovalId === s.id && (
+                      <Loader2 className="h-4 w-4 animate-spin text-emerald-600 shrink-0" />
+                    )}
+                    </div>
                     ) : (
                       <span className="text-xs capitalize text-muted-foreground">
                         {approvals[s.id]?.status ?? "pending"}
@@ -882,6 +902,7 @@ function FormDataTable({ form }: FormDataTableProps) {
                         type="button"
                         className="mt-1 text-[10px] text-rose-700 underline"
                         onClick={async () => {
+                          setBusyApprovalId(s.id);
                           try {
                             const updated = await retryJobberSync(s.id);
                             setApprovals((m) => ({ ...m, [s.id]: updated }));
@@ -889,6 +910,8 @@ function FormDataTable({ form }: FormDataTableProps) {
                             else toast.error(updated.jobber_sync_error || "Jobber sync failed");
                           } catch {
                             toast.error("Could not retry Jobber sync");
+                          } finally {
+                            setBusyApprovalId(null);
                           }
                         }}
                       >

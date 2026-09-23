@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Check, ChevronsUpDown, Star, X } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -132,7 +132,8 @@ export default function PublicFormPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         Loading…
       </div>
     );
@@ -207,7 +208,7 @@ export default function PublicFormPage() {
   return (
     <div className="min-h-screen bg-muted/30 py-10 px-4">
       <div className="max-w-2xl mx-auto bg-card border rounded-2xl p-6 sm:p-8 space-y-6">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5 relative">
           {visibleFields.map((f) => (
             <FieldRenderer
               key={f.id}
@@ -225,8 +226,15 @@ export default function PublicFormPage() {
             disabled={submitting}
             className=""
           >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {submitting ? "Submitting…" : "Submit"}
           </Button>
+          {submitting ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-card/80">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+              <p className="text-sm font-medium">Submitting… this can take a few seconds</p>
+            </div>
+          ) : null}
         </form>
       </div>
     </div>

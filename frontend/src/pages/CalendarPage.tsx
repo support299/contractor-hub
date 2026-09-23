@@ -17,6 +17,7 @@ import {
   Trash2,
   CalendarDays,
   FilePlus,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FormSubmitDialog } from "@/components/FormSubmitDialog";
@@ -193,6 +194,11 @@ export default function CalendarPage() {
 
   const [confirmDelete, setConfirmDelete] = useState<LeaveRequest | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"approved" | "rejected" | "jobber" | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
 
   const fields = useMemo(
     () => (leaveForm ? detectFields(leaveForm) : null),
@@ -312,6 +318,8 @@ export default function CalendarPage() {
 
   // ---- approval actions ----
   async function setStatus(id: string, status: ApprovalStatus) {
+    setBusyId(id);
+    setBusyAction(status === "approved" ? "approved" : "rejected");
     try {
       const updated = await updateLeaveApproval(id, status);
       setApprovals((p) => ({ ...p, [id]: updated }));
@@ -321,10 +329,15 @@ export default function CalendarPage() {
       }
     } catch {
       toast.error("Could not update status");
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
     }
   }
 
   async function retrySync(id: string) {
+    setBusyId(id);
+    setBusyAction("jobber");
     try {
       const updated = await retryJobberSync(id);
       setApprovals((p) => ({ ...p, [id]: updated }));
@@ -332,10 +345,14 @@ export default function CalendarPage() {
       else toast.error(updated.jobber_sync_error || "Jobber sync failed");
     } catch {
       toast.error("Could not retry Jobber sync");
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
     }
   }
 
   async function handleDelete(req: LeaveRequest) {
+    setDeleting(true);
     try {
       await deleteSubmission(req.submission.id);
       setSubmissions((s) => s.filter((x) => x.id !== req.submission.id));
@@ -344,11 +361,12 @@ export default function CalendarPage() {
         delete next[req.submission.id];
         return next;
       });
+      setConfirmDelete(null);
       toast.success("Leave entry deleted");
     } catch {
       toast.error("Could not delete");
     } finally {
-      setConfirmDelete(null);
+      setDeleting(false);
     }
   }
 
@@ -630,9 +648,17 @@ export default function CalendarPage() {
                   <Button
                     size="sm"
                     className="h-7 px-2 text-xs"
+                    disabled={busyId === r.submission.id}
                     onClick={() => setStatus(r.submission.id, "approved")}
                   >
-                    <Check className="h-3.5 w-3.5 mr-1" /> Approve
+                    {busyId === r.submission.id && busyAction === "approved" ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {busyId === r.submission.id && busyAction === "approved"
+                      ? "Approving…"
+                      : "Approve"}
                   </Button>
                 )}
                 {r.status === "approved" && !approvals[r.submission.id]?.jobber_task_id && (
@@ -640,9 +666,15 @@ export default function CalendarPage() {
                     size="sm"
                     variant="secondary"
                     className="h-7 px-2 text-xs"
+                    disabled={busyId === r.submission.id}
                     onClick={() => retrySync(r.submission.id)}
                   >
-                    Retry Jobber
+                    {busyId === r.submission.id && busyAction === "jobber" && (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    )}
+                    {busyId === r.submission.id && busyAction === "jobber"
+                      ? "Syncing…"
+                      : "Retry Jobber"}
                   </Button>
                 )}
                 {r.status !== "rejected" && (
@@ -650,15 +682,24 @@ export default function CalendarPage() {
                     size="sm"
                     variant="outline"
                     className="h-7 px-2 text-xs"
+                    disabled={busyId === r.submission.id}
                     onClick={() => setStatus(r.submission.id, "rejected")}
                   >
-                    <XIcon className="h-3.5 w-3.5 mr-1" /> Reject
+                    {busyId === r.submission.id && busyAction === "rejected" ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <XIcon className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {busyId === r.submission.id && busyAction === "rejected"
+                      ? "Rejecting…"
+                      : "Reject"}
                   </Button>
                 )}
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                  disabled={busyId === r.submission.id}
                   onClick={() => setConfirmDelete(r)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -684,7 +725,7 @@ export default function CalendarPage() {
 
       {/* Delete confirm / detail dialog */}
 
-      <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => !deleting && !o && setConfirmDelete(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Leave entry</DialogTitle>
@@ -723,15 +764,21 @@ export default function CalendarPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDelete(null)}>
+            <Button variant="outline" onClick={() => setConfirmDelete(null)} disabled={deleting}>
               Close
             </Button>
             {canApprove ? (
             <Button
               variant="destructive"
+              disabled={deleting}
               onClick={() => confirmDelete && handleDelete(confirmDelete)}
             >
-              <Trash2 className="h-4 w-4 mr-1" /> Delete entry
+              {deleting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1" />
+              )}
+              {deleting ? "Deleting…" : "Delete entry"}
             </Button>
             ) : null}
           </DialogFooter>
