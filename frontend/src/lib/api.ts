@@ -10,6 +10,7 @@ export type AuthUser = {
   identifier: string;
   name: string;
   email: string;
+  phone?: string;
   position?: string;
 };
 
@@ -19,6 +20,7 @@ export type Session = {
   identifier: string;
   name?: string;
   email?: string;
+  phone?: string;
   position?: string;
 };
 
@@ -52,6 +54,16 @@ export function canOpenScoreboard(session: Session | null = getSession()): boole
   return isAdminSession(session) || isDisplaySession(session);
 }
 
+export type MeProfile = {
+  userId: string | null;
+  role: string;
+  identifier: string;
+  name: string;
+  email: string;
+  phone: string;
+  position: string;
+};
+
 export function setAuth(access: string, refresh: string, user: AuthUser) {
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
@@ -61,9 +73,27 @@ export function setAuth(access: string, refresh: string, user: AuthUser) {
     identifier: user.identifier,
     name: user.name,
     email: user.email,
+    phone: user.phone || "",
     position: user.position || "",
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  window.dispatchEvent(new CustomEvent("cotg-storage"));
+}
+
+function patchSessionFromMe(me: MeProfile) {
+  const session = getSession();
+  if (!session) return;
+  const next: Session = {
+    ...session,
+    userId: me.userId || session.userId,
+    role: me.role || session.role,
+    identifier: me.identifier || session.identifier,
+    name: me.name,
+    email: me.email,
+    phone: me.phone || "",
+    position: me.position || session.position || "",
+  };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent("cotg-storage"));
 }
 
@@ -191,6 +221,16 @@ export async function verifyOtp(phone: string, otp: string) {
   );
   setAuth(data.access, data.refresh, data.user);
   return data;
+}
+
+export async function fetchMe(): Promise<MeProfile> {
+  return api<MeProfile>("/auth/me/");
+}
+
+export async function updateMe(patch: { email?: string; phone?: string }): Promise<MeProfile> {
+  const me = await api<MeProfile>("/auth/me/", { method: "PATCH", body: patch });
+  patchSessionFromMe(me);
+  return me;
 }
 
 export async function loginByEmail(email: string) {

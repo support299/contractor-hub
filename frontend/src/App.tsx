@@ -17,6 +17,7 @@ import CalendarPage from "@/pages/CalendarPage";
 import ResourcesPage from "@/pages/ResourcesPage";
 import DataPage from "@/pages/DataPage";
 import SettingsPage from "@/pages/SettingsPage";
+import ProfilePage from "@/pages/ProfilePage";
 import FormsPage from "@/pages/FormsPage";
 import QuickEntryPage from "@/pages/QuickEntryPage";
 import FormSubmissionsPage from "@/pages/FormSubmissionsPage";
@@ -53,6 +54,7 @@ export default function App() {
                 <Route path="payrolls" element={<PayrollsPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="resources" element={<ResourcesPage />} />
+                <Route path="profile" element={<ProfilePage />} />
                 <Route element={<RequireAdmin />}>
                   <Route path="quick-entry" element={<QuickEntryPage />} />
                   <Route path="scoreboard" element={<ScoreboardPage />} />

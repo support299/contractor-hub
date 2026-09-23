@@ -35,6 +35,7 @@ export default function AdminLayout() {
     { to: "/admin/payrolls", label: "Payrolls" },
     { to: "/admin/calendar", label: "Calendar" },
     { to: "/admin/resources", label: "Resources" },
+    { to: "/admin/profile", label: "Profile" },
     ...(admin ? [{ to: "/admin/data", label: "Records" }] : []),
   ];
   const adminNavItems = admin
@@ -100,9 +101,12 @@ export default function AdminLayout() {
                 {roleLabel}
               </span>
               {session?.name ? (
-                <span className="text-sm text-muted-foreground truncate hidden lg:inline">
+                <Link
+                  to="/admin/profile"
+                  className="text-sm text-muted-foreground truncate hidden lg:inline hover:text-foreground"
+                >
                   {session.name}
-                </span>
+                </Link>
               ) : null}
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -128,7 +132,13 @@ export default function AdminLayout() {
                 Hub navigation
               </SheetDescription>
               {session?.name ? (
-                <p className="text-sm text-muted-foreground truncate">{session.name}</p>
+                <Link
+                  to="/admin/profile"
+                  onClick={() => setNavOpen(false)}
+                  className="text-sm text-muted-foreground truncate hover:text-foreground"
+                >
+                  {session.name}
+                </Link>
               ) : null}
             </SheetHeader>
             <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1">

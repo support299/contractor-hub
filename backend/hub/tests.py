@@ -1858,4 +1858,39 @@ class NotifySmsTests(TestCase):
         self.assertEqual(mock_email.call_count, 1)
 
 
+class MeProfileUpdateTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.employee = HubUser.objects.create(
+            name="Eli",
+            email="eli-old@test.local",
+            phone="",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(self.employee)['access']}"
+        )
+
+    @patch("hub.services.jobber_bridge.maybe_fill_jobber_id")
+    def test_staff_can_update_own_email_and_phone(self, mock_fill):
+        res = self.client.patch(
+            "/api/auth/me/",
+            {"email": "eli-new@test.local", "phone": "+15558888"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["email"], "eli-new@test.local")
+        self.assertEqual(res.data["phone"], "+15558888")
+        self.employee.refresh_from_db()
+        self.assertEqual(self.employee.email, "eli-new@test.local")
+        self.assertEqual(self.employee.phone, "+15558888")
+        mock_fill.assert_called_once()
+
+
+
 
