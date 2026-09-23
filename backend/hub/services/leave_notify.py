@@ -79,10 +79,16 @@ def notify_leave_submitted(submission: HubFormSubmission) -> None:
                 ),
             )
         from hub.services.notify_email import send_designated_notification_emails
+        from hub.services.notify_sms import send_designated_notification_sms
 
         send_designated_notification_emails(
             event_key=event_key_for(TYPE_SUBMITTED, submission.id, "email"),
             title="New leave request",
+            body=body,
+            link=LEAVE_CALENDAR_PATH,
+        )
+        send_designated_notification_sms(
+            event_key=event_key_for(TYPE_SUBMITTED, submission.id, "sms"),
             body=body,
             link=LEAVE_CALENDAR_PATH,
         )
@@ -134,11 +140,18 @@ def notify_leave_decision(approval: HubLeaveApproval, previous_status: str) -> N
             event_key=event_key,
         )
         from hub.services.notify_email import send_user_notification_email
+        from hub.services.notify_sms import send_user_notification_sms
 
         send_user_notification_email(
             employee,
             event_key=event_key_for(ntype, approval.submission_id, "email"),
             title=title,
+            body=body,
+            link=LEAVE_CALENDAR_PATH,
+        )
+        send_user_notification_sms(
+            employee,
+            event_key=event_key_for(ntype, approval.submission_id, "sms"),
             body=body,
             link=LEAVE_CALENDAR_PATH,
         )

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
+import { useSearchParams } from "react-router-dom";
 import {
   DollarSign,
   Award,
@@ -64,6 +65,7 @@ export default function DashboardPage() {
   const users = useUsers();
   const session = useSession();
   const admin = isAdminSession(session);
+  const [searchParams] = useSearchParams();
   const activeUsers = useMemo(
     () => users.filter((u) => u.status === "active"),
     [users],
@@ -73,8 +75,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!admin && session?.userId) {
       setSelectedId(session.userId);
+      return;
     }
-  }, [admin, session?.userId]);
+    const fromLink = searchParams.get("user");
+    if (admin && fromLink) {
+      setSelectedId(fromLink);
+    }
+  }, [admin, session?.userId, searchParams]);
 
   const selected = admin
     ? activeUsers.find((u) => u.id === selectedId) ?? activeUsers[0]

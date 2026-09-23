@@ -7,6 +7,7 @@ import logging
 from hub.models import HubForm, HubFormSubmission, HubUser
 from hub.services.notify import event_key_for, notify_user
 from hub.services.notify_email import send_user_notification_email
+from hub.services.notify_sms import send_user_notification_sms
 from hub.services.tip_confirm import _as_list, resolve_hub_users
 
 logger = logging.getLogger(__name__)
@@ -68,13 +69,14 @@ def maybe_notify_feedback(submission: HubFormSubmission) -> None:
         title = "New client feedback"
         body = "A client submitted feedback that includes you."
         for user in staff:
+            link = f"{DASHBOARD_PATH}?user={user.id}"
             event_key = event_key_for(TYPE_FEEDBACK, submission.id, user.id)
             notify_user(
                 user,
                 type=TYPE_FEEDBACK,
                 title=title,
                 body=body,
-                link=DASHBOARD_PATH,
+                link=link,
                 payload={
                     "submission_id": str(submission.id),
                     "form_slug": form.slug or "",
@@ -87,7 +89,13 @@ def maybe_notify_feedback(submission: HubFormSubmission) -> None:
                 event_key=event_key_for(TYPE_FEEDBACK, submission.id, user.id, "email"),
                 title=title,
                 body=body,
-                link=DASHBOARD_PATH,
+                link=link,
+            )
+            send_user_notification_sms(
+                user,
+                event_key=event_key_for(TYPE_FEEDBACK, submission.id, user.id, "sms"),
+                body=body,
+                link=link,
             )
     except Exception:
         logger.exception(

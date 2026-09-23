@@ -10,9 +10,9 @@ from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError, transaction
 
 from hub.models import HubForm, HubFormSubmission, HubTipConfirmLog, HubUser
-from hub.services.ghl import send_conversation_sms
 from hub.services.notify import event_key_for, notify_user
 from hub.services.notify_email import send_user_notification_email
+from hub.services.notify_sms import send_user_notification_sms
 
 logger = logging.getLogger(__name__)
 
@@ -225,20 +225,12 @@ def _run_automation(submission: HubFormSubmission, parsed: dict) -> None:
             body=_in_app_body(amount, client_name),
             link=TIPS_DATA_PATH,
         )
-        try:
-            ok = send_conversation_sms(tech, _sms_body(tech, amount, client_name))
-            if not ok:
-                logger.warning(
-                    "Tip SMS failed for technician %s submission %s",
-                    tech.id,
-                    submission.id,
-                )
-        except Exception:
-            logger.exception(
-                "Tip SMS error for technician %s submission %s",
-                tech.id,
-                submission.id,
-            )
+        send_user_notification_sms(
+            tech,
+            event_key=event_key_for(TYPE_TIP_CONFIRMED, submission.id, tech.id, "sms"),
+            body=_sms_body(tech, amount, client_name),
+            append_link=False,
+        )
 
 
 def maybe_run_tip_confirm(submission: HubFormSubmission) -> bool:

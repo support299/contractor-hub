@@ -13,6 +13,8 @@ from .models import (
     HubNotification,
     HubNotificationEmail,
     HubNotificationEmailLog,
+    HubNotificationSmsLog,
+    HubNotifyPrefs,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -101,9 +103,14 @@ class HubAlertAdmin(admin.ModelAdmin):
 
 @admin.register(HubNotificationEmail)
 class HubNotificationEmailAdmin(admin.ModelAdmin):
-    list_display = ("email", "label", "active", "created_at")
+    list_display = ("email", "phone", "label", "active", "created_at")
     list_filter = ("active",)
-    search_fields = ("email", "label")
+    search_fields = ("email", "phone", "label")
+
+
+@admin.register(HubNotifyPrefs)
+class HubNotifyPrefsAdmin(admin.ModelAdmin):
+    list_display = ("channel", "updated_at")
 
 
 @admin.register(HubNotificationEmailLog)
@@ -111,6 +118,13 @@ class HubNotificationEmailLogAdmin(admin.ModelAdmin):
     list_display = ("email", "event_key", "created_at")
     search_fields = ("email", "event_key")
     readonly_fields = ("event_key", "email", "created_at")
+
+
+@admin.register(HubNotificationSmsLog)
+class HubNotificationSmsLogAdmin(admin.ModelAdmin):
+    list_display = ("recipient_key", "event_key", "created_at")
+    search_fields = ("recipient_key", "event_key")
+    readonly_fields = ("event_key", "recipient_key", "created_at")
 
 
 @admin.register(HubVisit)

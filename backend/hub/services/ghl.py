@@ -410,6 +410,57 @@ def send_conversation_email(
         return False
 
 
+def _post_conversation_sms(contact_id: str, text: str) -> bool:
+    headers = _headers()
+    headers["Version"] = getattr(
+        settings, "GHL_CONVERSATIONS_API_VERSION", "2021-04-15"
+    )
+    resp = requests.post(
+        f"{_base_url()}/conversations/messages",
+        json={"type": "SMS", "contactId": contact_id, "message": text},
+        headers=headers,
+        timeout=30,
+    )
+    if resp.status_code in (200, 201):
+        return True
+    logger.error(
+        "GHL Conversations SMS failed for contact %s: %s %s",
+        contact_id,
+        resp.status_code,
+        resp.text[:500],
+    )
+    return False
+
+
+def send_conversation_sms_to_phone(
+    phone: str,
+    message: str,
+    *,
+    name: str = "",
+    email: str = "",
+) -> bool:
+    """Send SMS to a raw number via GHL Conversations. Returns True on HTTP 200/201."""
+    number = (phone or "").strip()
+    text = (message or "").strip()
+    if not number or not text:
+        logger.warning("GHL SMS skip: missing phone or message")
+        return False
+    try:
+        contact_id = upsert_contact_by_phone(
+            number, email=(email or "").strip(), name=(name or "").strip()
+        )
+        if not contact_id:
+            logger.error("GHL SMS: no contact id for phone %s", number)
+            return False
+        return _post_conversation_sms(contact_id, text)
+    except GHLConfigError:
+        logger.exception("GHL SMS config error for phone %s", number)
+        return False
+    except requests.RequestException as exc:
+        logger.error("GHL SMS request error for phone %s: %s", number, exc)
+        return False
+
+
 def send_conversation_sms(hub_user: HubUser, message: str) -> bool:
     """Send an SMS via GHL Conversations. Returns True on HTTP 200/201."""
     text = (message or "").strip()
@@ -438,26 +489,7 @@ def send_conversation_sms(hub_user: HubUser, message: str) -> bool:
         if not contact_id:
             logger.error("GHL SMS: no contact id for user %s", hub_user.id)
             return False
-
-        headers = _headers()
-        headers["Version"] = getattr(
-            settings, "GHL_CONVERSATIONS_API_VERSION", "2021-04-15"
-        )
-        resp = requests.post(
-            f"{_base_url()}/conversations/messages",
-            json={"type": "SMS", "contactId": contact_id, "message": text},
-            headers=headers,
-            timeout=30,
-        )
-        if resp.status_code in (200, 201):
-            return True
-        logger.error(
-            "GHL Conversations SMS failed for user %s: %s %s",
-            hub_user.id,
-            resp.status_code,
-            resp.text[:500],
-        )
-        return False
+        return _post_conversation_sms(contact_id, text)
     except GHLConfigError:
         logger.exception("GHL SMS config error for user %s", hub_user.id)
         return False

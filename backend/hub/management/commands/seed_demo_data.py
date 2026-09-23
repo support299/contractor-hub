@@ -191,7 +191,7 @@ class Command(BaseCommand):
 
     def _seed_alerts(self):
         HubAlert.objects.update_or_create(
-            message="[DEMO] Welcome to the contractor hub — demo data loaded.",
+            message="[DEMO] Welcome to the employee hub — demo data loaded.",
             defaults={"active": True, "sort_order": 0},
         )
         HubAlert.objects.update_or_create(

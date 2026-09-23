@@ -9,6 +9,7 @@ from .models import (
     HubLeaveApproval,
     HubNotification,
     HubNotificationEmail,
+    HubNotifyPrefs,
     HubResourceFolder,
     HubTrainingMaterial,
     HubUser,
@@ -487,7 +488,7 @@ class HubNotificationEmailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HubNotificationEmail
-        fields = ["id", "email", "label", "active", "createdAt", "created_at", "updated_at"]
+        fields = ["id", "email", "phone", "label", "active", "createdAt", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at", "createdAt"]
 
     def validate_email(self, value):
@@ -501,14 +502,30 @@ class HubNotificationEmailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("That email is already on the list.")
         return email
 
+    def validate_phone(self, value):
+        return (value or "").strip()
+
     def to_representation(self, instance):
         return {
             "id": str(instance.id),
             "email": instance.email,
+            "phone": instance.phone or "",
             "label": instance.label or "",
             "active": instance.active,
             "createdAt": instance.created_at.isoformat() if instance.created_at else None,
         }
+
+
+class HubNotifyPrefsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HubNotifyPrefs
+        fields = ["channel"]
+
+    def validate_channel(self, value):
+        allowed = {c.value for c in HubNotifyPrefs.Channel}
+        if value not in allowed:
+            raise serializers.ValidationError("Use email, sms, or both.")
+        return value
 
 
 class RequestOtpSerializer(serializers.Serializer):

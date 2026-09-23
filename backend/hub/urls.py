@@ -38,6 +38,11 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        "notification-prefs/",
+        views.HubNotifyPrefsView.as_view(),
+        name="hub-notification-prefs",
+    ),
     path("auth/request-otp/", views.RequestOtpView.as_view(), name="request-otp"),
     path("auth/verify-otp/", views.VerifyOtpView.as_view(), name="verify-otp"),
     path("auth/login/", views.PasswordLoginView.as_view(), name="password-login"),

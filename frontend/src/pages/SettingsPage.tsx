@@ -32,7 +32,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm text-muted-foreground">Manage users, alerts, and email notifications.</p>
+          <p className="text-sm text-muted-foreground">Manage users, alerts, and notifications.</p>
         </div>
       </div>
 
@@ -41,7 +41,7 @@ export default function SettingsPage() {
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="forms">Forms</TabsTrigger>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
-          <TabsTrigger value="emails">Email notifications</TabsTrigger>
+          <TabsTrigger value="emails">Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="space-y-4 mt-4">

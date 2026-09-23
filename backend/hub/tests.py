@@ -719,7 +719,7 @@ class TipConfirmAutomationTests(TestCase):
         sub = HubFormSubmission.objects.create(
             form=self.form, answers=self._answers("")
         )
-        with patch("hub.services.tip_confirm.send_conversation_sms") as sms:
+        with patch("hub.services.notify_sms.send_conversation_sms") as sms:
             ran = maybe_run_tip_confirm(sub)
         self.assertFalse(ran)
         sms.assert_not_called()
@@ -736,7 +736,7 @@ class TipConfirmAutomationTests(TestCase):
             form=self.form, answers=self._answers("Yes")
         )
         with patch(
-            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+            "hub.services.notify_sms.send_conversation_sms", return_value=True
         ) as sms:
             self.assertTrue(maybe_run_tip_confirm(sub))
             self.assertFalse(maybe_run_tip_confirm(sub))
@@ -762,7 +762,7 @@ class TipConfirmAutomationTests(TestCase):
         self.assertTrue(HubTipConfirmLog.objects.filter(submission=sub).exists())
 
     @patch("hub.services.notify_email.send_conversation_email", return_value=True)
-    @patch("hub.services.tip_confirm.send_conversation_sms", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
     def test_confirmed_emails_techs_with_address(self, _sms, mock_email):
         from hub.models import HubFormSubmission
         from hub.services.tip_confirm import maybe_run_tip_confirm
@@ -793,7 +793,7 @@ class TipConfirmAutomationTests(TestCase):
         )
         anon = APIClient()
         with patch(
-            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+            "hub.services.notify_sms.send_conversation_sms", return_value=True
         ) as sms:
             created = anon.post(
                 "/api/submissions/",
@@ -843,7 +843,7 @@ class TipConfirmAutomationTests(TestCase):
             form=form, answers=self._answers("Yes")
         )
         with patch(
-            "hub.services.tip_confirm.send_conversation_sms", return_value=True
+            "hub.services.notify_sms.send_conversation_sms", return_value=True
         ):
             self.assertTrue(maybe_run_tip_confirm(sub))
         self.assertEqual(HubNotification.objects.filter(type="tip_confirmed").count(), 2)
@@ -891,9 +891,10 @@ class FeedbackNotifyTests(TestCase):
         qs = HubNotification.objects.filter(type="client_feedback")
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.get().recipient_id, self.tech.id)
-        self.assertEqual(qs.get().link, "/admin/dashboard")
+        self.assertEqual(qs.get().link, f"/admin/dashboard?user={self.tech.id}")
         self.assertEqual(mock_send.call_count, 1)
         self.assertEqual(mock_send.call_args.kwargs["email"], "alex-fb@test.local")
+        self.assertIn(f"/admin/dashboard?user={self.tech.id}", mock_send.call_args.kwargs["html"])
 
     @patch("hub.services.notify_email.send_conversation_email", return_value=True)
     def test_skips_admins_and_unnamed(self, mock_send):
@@ -1708,17 +1709,153 @@ class NotificationEmailApiTests(TestCase):
 
         off = self.admin_client.patch(
             f"/api/notification-emails/{row_id}/",
-            {"active": False},
+            {"active": False, "phone": "+15550101"},
             format="json",
         )
         self.assertEqual(off.status_code, 200)
         self.assertFalse(off.data["active"])
+        self.assertEqual(off.data["phone"], "+15550101")
 
         gone = self.admin_client.delete(f"/api/notification-emails/{row_id}/")
         self.assertEqual(gone.status_code, 204)
 
+    def test_prefs_channel_admin_only(self):
+        listing = self.admin_client.get("/api/notification-prefs/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.data["channel"], "both")
+
+        patched = self.admin_client.patch(
+            "/api/notification-prefs/",
+            {"channel": "sms"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.data["channel"], "sms")
+
+        bad = self.admin_client.patch(
+            "/api/notification-prefs/",
+            {"channel": "carrier-pigeon"},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        denied = self.emp_client.get("/api/notification-prefs/")
+        self.assertEqual(denied.status_code, 403)
+
     def test_staff_cannot_list(self):
         res = self.emp_client.get("/api/notification-emails/")
         self.assertEqual(res.status_code, 403)
+
+
+class NotifySmsTests(TestCase):
+    def setUp(self):
+        from hub.models import HubForm, HubUser
+
+        self.admin = HubUser.objects.create(
+            name="Boss",
+            email="boss-sms@test.local",
+            role=HubUser.Role.ADMIN,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.employee = HubUser.objects.create(
+            name="Jane Doe",
+            email="jane-sms@test.local",
+            phone="+15550001",
+            ghl_id="ghl-jane",
+            role=HubUser.Role.EMPLOYEE,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.form = HubForm.objects.create(
+            name="Request Time Off",
+            slug="request-time-off",
+            fields=LEAVE_FIELDS,
+        )
+
+    def _submit(self):
+        from hub.models import HubFormSubmission
+
+        return HubFormSubmission.objects.create(
+            form=self.form,
+            answers={
+                "u": [str(self.employee.id)],
+                "s": "2026-08-10",
+                "e": "2026-08-17",
+                "t": "Vacation",
+            },
+        )
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
+    def test_approve_sends_email_and_sms(self, mock_sms, mock_email):
+        from hub.models import HubLeaveApproval
+        from hub.services.leave_notify import notify_leave_decision
+
+        sub = self._submit()
+        approval = HubLeaveApproval.objects.create(
+            submission=sub, status=HubLeaveApproval.Status.APPROVED
+        )
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        self.assertEqual(mock_email.call_count, 1)
+        self.assertEqual(mock_sms.call_count, 1)
+        self.assertIn("was approved", mock_sms.call_args.args[1])
+        self.assertIn("/admin/calendar", mock_sms.call_args.args[1])
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
+    def test_channel_email_skips_sms(self, mock_sms, mock_email):
+        from hub.models import HubLeaveApproval, HubNotifyPrefs
+        from hub.services.leave_notify import notify_leave_decision
+
+        prefs = HubNotifyPrefs.load()
+        prefs.channel = HubNotifyPrefs.Channel.EMAIL
+        prefs.save()
+        sub = self._submit()
+        approval = HubLeaveApproval.objects.create(
+            submission=sub, status=HubLeaveApproval.Status.APPROVED
+        )
+        notify_leave_decision(approval, HubLeaveApproval.Status.PENDING)
+        mock_email.assert_called_once()
+        mock_sms.assert_not_called()
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms_to_phone", return_value=True)
+    def test_submit_sms_designated_phone(self, mock_sms, mock_email):
+        from hub.models import HubNotificationEmail
+        from hub.services.leave_notify import notify_leave_submitted
+
+        HubNotificationEmail.objects.create(
+            email="office@cotg.com", phone="+15559999", label="Office"
+        )
+        sub = self._submit()
+        notify_leave_submitted(sub)
+        notify_leave_submitted(sub)
+        mock_email.assert_called_once()
+        mock_sms.assert_called_once()
+        self.assertEqual(mock_sms.call_args.args[0], "+15559999")
+        self.assertIn("Jane Doe submitted", mock_sms.call_args.args[1])
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
+    def test_feedback_sms_includes_dashboard_link(self, mock_sms, mock_email):
+        from hub.models import HubForm, HubFormSubmission
+        from hub.services.feedback_notify import maybe_notify_feedback
+
+        form = HubForm.objects.create(
+            name="How are we doing?",
+            slug="how-are-we-doing",
+            fields=[{"id": "u", "type": "users", "label": "Cleaners"}],
+        )
+        sub = HubFormSubmission.objects.create(
+            form=form, answers={"u": [str(self.employee.id)]}
+        )
+        maybe_notify_feedback(sub)
+        maybe_notify_feedback(sub)
+        self.assertEqual(mock_sms.call_count, 1)
+        body = mock_sms.call_args.args[1]
+        self.assertIn("feedback", body.lower())
+        self.assertIn(f"/admin/dashboard?user={self.employee.id}", body)
+        self.assertEqual(mock_email.call_count, 1)
+
 
 

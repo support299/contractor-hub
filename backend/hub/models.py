@@ -338,10 +338,11 @@ class HubAlert(TimeStampedModel):
 
 
 class HubNotificationEmail(TimeStampedModel):
-    """Addresses that also receive Hub in-app alerts (via GHL Conversations email)."""
+    """Office contacts that get Hub leave-submit alerts via GHL Conversations."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=64, blank=True, default="")
     label = models.CharField(max_length=128, blank=True, default="")
     active = models.BooleanField(default=True)
 
@@ -350,6 +351,36 @@ class HubNotificationEmail(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.email
+
+
+class HubNotifyPrefs(models.Model):
+    """Singleton: how staff/office alerts leave the Hub (in-app always)."""
+
+    class Channel(models.TextChoices):
+        EMAIL = "email", "Email"
+        SMS = "sms", "SMS"
+        BOTH = "both", "Email and SMS"
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    channel = models.CharField(
+        max_length=16, choices=Channel.choices, default=Channel.BOTH
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Hub notify prefs"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "HubNotifyPrefs":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self) -> str:
+        return self.channel
 
 
 class HubNotificationEmailLog(models.Model):
@@ -369,6 +400,25 @@ class HubNotificationEmailLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_key} → {self.email}"
+
+
+class HubNotificationSmsLog(models.Model):
+    """Idempotency for outbound GHL SMS (one send per event + phone/user)."""
+
+    event_key = models.CharField(max_length=191)
+    recipient_key = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event_key", "recipient_key"],
+                name="hub_notify_sms_log_event_recipient",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_key} → {self.recipient_key}"
 
 
 class HubVisit(TimeStampedModel):
