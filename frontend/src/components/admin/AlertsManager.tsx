@@ -68,9 +68,6 @@ export function AlertsManager() {
     <section className="bg-card border rounded-2xl overflow-hidden">
       <div className="px-6 py-4 border-b">
         <h2 className="font-semibold">Scrolling alerts</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Active alerts scroll across the top banner of the hub.
-        </p>
       </div>
 
       <div className="px-6 py-4 border-b flex gap-2">

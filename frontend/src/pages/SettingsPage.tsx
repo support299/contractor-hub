@@ -54,10 +54,6 @@ export default function SettingsPage() {
           <section className="bg-card border rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b">
               <h2 className="font-semibold">Users ({users.length})</h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                Staff need a work email to use Set password at /set-password. Login column shows who
-                has finished onboarding.
-              </p>
             </div>
             {users.length === 0 ? (
               <div className="px-6 py-10 text-center text-sm text-muted-foreground">
