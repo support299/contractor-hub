@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ type FormLaunch = {
 
 type QuickEntryContextValue = {
   items: VisibleQuickEntry[];
-  launch: (item: VisibleQuickEntry, opts?: { defer?: boolean }) => void;
+  launch: (item: VisibleQuickEntry) => void;
 };
 
 const QuickEntryContext = createContext<QuickEntryContextValue | null>(null);
@@ -46,10 +46,10 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
 
   const [formLaunch, setFormLaunch] = useState<FormLaunch | null>(null);
   const [userOpen, setUserOpen] = useState(false);
-  const launchTimer = useRef<number | null>(null);
 
-  const launchNow = useCallback((item: VisibleQuickEntry) => {
+  const launch = useCallback((item: VisibleQuickEntry) => {
     if (item.kind === "new-user") {
+      setFormLaunch(null);
       setUserOpen(true);
       return;
     }
@@ -59,6 +59,7 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
       );
       return;
     }
+    setUserOpen(false);
     setFormLaunch({
       slug: item.resolved.slug,
       title: item.title,
@@ -67,40 +68,12 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const launch = useCallback(
-    (item: VisibleQuickEntry, opts?: { defer?: boolean }) => {
-      if (launchTimer.current) {
-        window.clearTimeout(launchTimer.current);
-        launchTimer.current = null;
-      }
-      if (opts?.defer) {
-        // Let Radix close the dropdown and release pointer-lock before the dialog opens.
-        // Same click otherwise dismisses the dialog immediately.
-        launchTimer.current = window.setTimeout(() => {
-          launchTimer.current = null;
-          launchNow(item);
-        }, 80);
-        return;
-      }
-      launchNow(item);
-    },
-    [launchNow],
-  );
-
-  useEffect(
-    () => () => {
-      if (launchTimer.current) window.clearTimeout(launchTimer.current);
-    },
-    [],
-  );
-
   const value = useMemo(() => ({ items, launch }), [items, launch]);
 
   return (
     <QuickEntryContext.Provider value={value}>
       {children}
       <FormSubmitDialog
-        key={formLaunch ? `${formLaunch.slug}:${formLaunch.title}` : "quick-entry-form"}
         slug={formLaunch?.slug ?? ""}
         title={formLaunch?.title}
         prefillByLabel={formLaunch?.prefillByLabel}
@@ -139,7 +112,7 @@ export function QuickEntryHeaderButton() {
               className="cursor-pointer"
               disabled={missing}
               onSelect={() => {
-                if (!missing) launch(item, { defer: true });
+                if (!missing) launch(item);
               }}
             >
               <Icon className="h-4 w-4" />

@@ -64,6 +64,7 @@ export function FormSubmitDialog({
   const prefillKey = JSON.stringify(prefillByLabel ?? null);
   const initialFormRef = useRef(initialForm);
   initialFormRef.current = initialForm;
+  const ignoreOutsideUntil = useRef(0);
 
   useEffect(() => {
     if (!open || !slug) {
@@ -71,6 +72,8 @@ export function FormSubmitDialog({
       setLoading(false);
       return;
     }
+    // Ignore the same click that opened this from the Quick Entry menu.
+    ignoreOutsideUntil.current = Date.now() + 400;
 
     let cancelled = false;
     const prefill = prefillKey
@@ -125,6 +128,10 @@ export function FormSubmitDialog({
   const setAnswer = (id: string, value: unknown) =>
     setAnswers((a) => ({ ...a, [id]: value }));
 
+  const close = () => {
+    if (!submitting) onOpenChange(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form) return;
@@ -156,58 +163,63 @@ export function FormSubmitDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
-        className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col relative"
+        className="max-w-2xl max-h-[90vh] overflow-y-auto"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
-          if (submitting) e.preventDefault();
+          if (submitting || Date.now() < ignoreOutsideUntil.current) e.preventDefault();
         }}
         onInteractOutside={(e) => {
-          if (submitting) e.preventDefault();
+          if (submitting || Date.now() < ignoreOutsideUntil.current) e.preventDefault();
         }}
       >
         <DialogHeader>
           <DialogTitle>{title ?? form?.name ?? "Submit"}</DialogTitle>
-          {form?.description && <DialogDescription>{form.description}</DialogDescription>}
+          {form?.description ? <DialogDescription>{form.description}</DialogDescription> : null}
         </DialogHeader>
 
-        <div
-          className="flex-1 overflow-y-auto overscroll-contain touch-pan-y -mx-6 px-6"
-          data-scroll-lock-scrollable=""
-        >
-          {loading ? (
-            <div className="py-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
-              Loading…
-            </div>
-          ) : !form ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Form not found.</div>
-          ) : (
-            <form id="form-submit-dialog" onSubmit={handleSubmit} className="space-y-5 py-2">
-              {visibleFields.map((f) => (
-                <FieldRenderer
-                  key={f.id}
-                  field={f}
-                  value={answers[f.id]}
-                  onChange={(v) => setAnswer(f.id, v)}
-                  users={users}
-                  formSlug={slug}
-                  staffNameLock={staffNameLock}
-                />
-              ))}
-            </form>
-          )}
-        </div>
+        {loading ? (
+          <div className="py-10 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            Loading…
+          </div>
+        ) : !form ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">Form not found.</div>
+        ) : (
+          <form noValidate onSubmit={handleSubmit} className="space-y-5">
+            {visibleFields.map((f) => (
+              <FieldRenderer
+                key={f.id}
+                field={f}
+                value={answers[f.id]}
+                onChange={(v) => setAnswer(f.id, v)}
+                users={users}
+                formSlug={slug}
+                staffNameLock={staffNameLock}
+              />
+            ))}
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={close} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitting ? "Submitting…" : "Submit"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button type="submit" form="form-submit-dialog" disabled={submitting || !form || loading}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Submitting…" : "Submit"}
-          </Button>
-        </DialogFooter>
+        {!loading && !form ? (
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        ) : null}
+
         {submitting ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/80">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
