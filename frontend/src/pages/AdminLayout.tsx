@@ -81,9 +81,9 @@ export default function AdminLayout() {
 
   return (
     <QuickEntryProvider>
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="h-dvh bg-background flex flex-col overflow-hidden">
         <AlertsBanner />
-        <header className="border-b bg-card sticky top-0 z-40">
+        <header className="border-b bg-card shrink-0 z-40">
           <div className="px-3 py-2.5 md:px-6 md:py-4 flex items-center gap-2">
             <Button
               type="button"
@@ -125,8 +125,11 @@ export default function AdminLayout() {
         </header>
 
         <Sheet open={navOpen} onOpenChange={setNavOpen}>
-          <SheetContent side="left" className="w-[min(20rem,85vw)] p-0 flex flex-col">
-            <SheetHeader className="px-4 py-4 border-b text-left space-y-1">
+          <SheetContent
+            side="left"
+            className="w-[min(20rem,85vw)] p-0 gap-0 flex flex-col h-dvh max-h-dvh overflow-hidden"
+          >
+            <SheetHeader className="px-4 py-4 border-b text-left space-y-1 shrink-0">
               <SheetTitle className="text-base">Menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Hub navigation
@@ -141,15 +144,15 @@ export default function AdminLayout() {
                 </Link>
               ) : null}
             </SheetHeader>
-            <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1">
+            <nav className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-1">
               {renderLinks(navItems, () => setNavOpen(false))}
-              {adminNavItems.length > 0 ? (
-                <div className="mt-3 pt-3 border-t flex flex-col gap-1">
-                  {renderLinks(adminNavItems, () => setNavOpen(false))}
-                </div>
-              ) : null}
             </nav>
-            <div className="p-3 border-t">
+            {adminNavItems.length > 0 ? (
+              <div className="px-3 py-2 border-t flex flex-col gap-1 shrink-0">
+                {renderLinks(adminNavItems, () => setNavOpen(false))}
+              </div>
+            ) : null}
+            <div className="p-3 border-t shrink-0">
               <Button variant="outline" className="w-full" onClick={logout}>
                 <LogOut className="h-4 w-4" />
                 Sign out
@@ -158,13 +161,18 @@ export default function AdminLayout() {
           </SheetContent>
         </Sheet>
 
-        <div className="flex-1 px-3 py-4 md:px-6 md:py-6 grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-4 md:gap-6 min-h-0">
-          <nav className="hidden md:flex flex-col space-y-1">
-            {renderLinks(navItems)}
-            <div className="flex-1 min-h-4" />
-            {renderLinks(adminNavItems)}
+        <div className="flex-1 min-h-0 px-3 py-4 md:px-6 md:py-6 grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] gap-4 md:gap-6 overflow-hidden">
+          <nav className="hidden md:flex flex-col min-h-0">
+            <div className="flex flex-col gap-1 overflow-y-auto min-h-0">
+              {renderLinks(navItems)}
+            </div>
+            {adminNavItems.length > 0 ? (
+              <div className="mt-auto pt-3 border-t flex flex-col gap-1 shrink-0">
+                {renderLinks(adminNavItems)}
+              </div>
+            ) : null}
           </nav>
-          <main className="min-w-0">
+          <main className="min-w-0 min-h-0 overflow-y-auto">
             <Outlet />
           </main>
         </div>
