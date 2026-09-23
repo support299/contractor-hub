@@ -624,9 +624,24 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
 
             on_leave_approved(approval)
         if previous_status != approval.status:
+            from .services.background import run_in_background
             from .services.leave_notify import notify_leave_decision
 
-            notify_leave_decision(approval, previous_status)
+            approval_id = approval.submission_id
+            prev = previous_status
+
+            def _notify() -> None:
+                row = (
+                    HubLeaveApproval.objects.select_related(
+                        "submission", "submission__form"
+                    )
+                    .filter(pk=approval_id)
+                    .first()
+                )
+                if row:
+                    notify_leave_decision(row, prev)
+
+            run_in_background(_notify, name=f"leave-notify-{approval_id}")
 
     @action(detail=True, methods=["post"], url_path="retry-jobber-sync")
     def retry_jobber_sync(self, request, submission_id=None):
