@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +28,8 @@ interface Props {
   title?: string;
   /** Prefill answers by field label (case-insensitive). */
   prefillByLabel?: Record<string, unknown>;
+  /** Cached form so the dialog can render immediately. */
+  initialForm?: HubForm | null;
 }
 
 function answersFromPrefill(form: HubForm, prefill?: Record<string, unknown>) {
@@ -49,6 +51,7 @@ export function FormSubmitDialog({
   onSubmitted,
   title,
   prefillByLabel,
+  initialForm,
 }: Props) {
   const session = useSession();
   const staffNameLock =
@@ -59,15 +62,24 @@ export function FormSubmitDialog({
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [submitting, setSubmitting] = useState(false);
   const prefillKey = JSON.stringify(prefillByLabel ?? null);
+  const initialFormRef = useRef(initialForm);
+  initialFormRef.current = initialForm;
 
   useEffect(() => {
-    if (!open) return;
-    setAnswers({});
-    setLoading(true);
-    const prefill = prefillKey ? (JSON.parse(prefillKey) as Record<string, unknown>) : undefined;
-    Promise.all([fetchFormBySlug(slug), fetchUsers()]).then(([f, u]) => {
+    if (!open || !slug) {
+      setSubmitting(false);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const prefill = prefillKey
+      ? (JSON.parse(prefillKey) as Record<string, unknown>)
+      : undefined;
+
+    const applyForm = (f: HubForm | null) => {
+      if (cancelled) return;
       setForm(f);
-      setUsers(u);
       const next = f ? answersFromPrefill(f, prefill) : {};
       if (staffNameLock && f) {
         const userField = f.fields.find((x) => x.type === "users");
@@ -75,7 +87,34 @@ export function FormSubmitDialog({
       }
       setAnswers(next);
       setLoading(false);
-    });
+    };
+
+    const cached =
+      initialFormRef.current && initialFormRef.current.slug === slug
+        ? initialFormRef.current
+        : null;
+    if (cached) {
+      applyForm(cached);
+    } else {
+      setForm(null);
+      setAnswers({});
+      setLoading(true);
+      fetchFormBySlug(slug)
+        .then((f) => applyForm(f ?? null))
+        .catch(() => applyForm(null));
+    }
+
+    fetchUsers()
+      .then((u) => {
+        if (!cancelled) setUsers(u);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, slug, staffNameLock, prefillKey]);
 
   const visibleFields = useMemo(() => {
@@ -107,18 +146,26 @@ export function FormSubmitDialog({
       }
       await submitFormAnswers(form.id, payload);
       toast.success("Submitted");
+      setSubmitting(false);
       onOpenChange(false);
       onSubmitted?.();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not submit. Try again.");
-    } finally {
       setSubmitting(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col relative">
+      <DialogContent
+        className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col relative"
+        onPointerDownOutside={(e) => {
+          if (submitting) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (submitting) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title ?? form?.name ?? "Submit"}</DialogTitle>
           {form?.description && <DialogDescription>{form.description}</DialogDescription>}
@@ -156,7 +203,7 @@ export function FormSubmitDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" form="form-submit-dialog" disabled={submitting || !form}>
+          <Button type="submit" form="form-submit-dialog" disabled={submitting || !form || loading}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {submitting ? "Submitting…" : "Submit"}
           </Button>

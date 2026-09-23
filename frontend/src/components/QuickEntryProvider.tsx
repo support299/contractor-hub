@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import {
 import { FormSubmitDialog } from "@/components/FormSubmitDialog";
 import { UserFormDialog } from "@/components/UserFormDialog";
 import { isAdminSession } from "@/lib/api";
-import { useForms } from "@/lib/forms-store";
+import { useForms, type HubForm } from "@/lib/forms-store";
 import { useSession } from "@/lib/hub-store";
 import {
   visibleQuickEntryShortcuts,
@@ -22,11 +22,12 @@ type FormLaunch = {
   slug: string;
   title: string;
   prefillByLabel?: Record<string, unknown>;
+  form?: HubForm;
 };
 
 type QuickEntryContextValue = {
   items: VisibleQuickEntry[];
-  launch: (item: VisibleQuickEntry) => void;
+  launch: (item: VisibleQuickEntry, opts?: { defer?: boolean }) => void;
 };
 
 const QuickEntryContext = createContext<QuickEntryContextValue | null>(null);
@@ -45,24 +46,50 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
 
   const [formLaunch, setFormLaunch] = useState<FormLaunch | null>(null);
   const [userOpen, setUserOpen] = useState(false);
+  const launchTimer = useRef<number | null>(null);
+
+  const launchNow = useCallback((item: VisibleQuickEntry) => {
+    if (item.kind === "new-user") {
+      setUserOpen(true);
+      return;
+    }
+    if (!item.resolved || item.resolved.kind !== "form") {
+      toast.error(
+        `No matching form for “${item.title}”. Check the form name or slug in Settings → Forms.`,
+      );
+      return;
+    }
+    setFormLaunch({
+      slug: item.resolved.slug,
+      title: item.title,
+      prefillByLabel: item.prefillByLabel,
+      form: item.resolved.form,
+    });
+  }, []);
 
   const launch = useCallback(
-    (item: VisibleQuickEntry) => {
-      if (item.kind === "new-user") {
-        setUserOpen(true);
+    (item: VisibleQuickEntry, opts?: { defer?: boolean }) => {
+      if (launchTimer.current) {
+        window.clearTimeout(launchTimer.current);
+        launchTimer.current = null;
+      }
+      if (opts?.defer) {
+        // Let Radix close the dropdown and release pointer-lock before the dialog opens.
+        // Same click otherwise dismisses the dialog immediately.
+        launchTimer.current = window.setTimeout(() => {
+          launchTimer.current = null;
+          launchNow(item);
+        }, 80);
         return;
       }
-      if (!item.resolved || item.resolved.kind !== "form") {
-        toast.error(
-          `No matching form for “${item.title}”. Check the form name or slug in Settings → Forms.`,
-        );
-        return;
-      }
-      setFormLaunch({
-        slug: item.resolved.slug,
-        title: item.title,
-        prefillByLabel: item.prefillByLabel,
-      });
+      launchNow(item);
+    },
+    [launchNow],
+  );
+
+  useEffect(
+    () => () => {
+      if (launchTimer.current) window.clearTimeout(launchTimer.current);
     },
     [],
   );
@@ -72,18 +99,17 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
   return (
     <QuickEntryContext.Provider value={value}>
       {children}
-      {formLaunch ? (
-        <FormSubmitDialog
-          key={`${formLaunch.slug}:${formLaunch.title}`}
-          slug={formLaunch.slug}
-          title={formLaunch.title}
-          prefillByLabel={formLaunch.prefillByLabel}
-          open
-          onOpenChange={(o) => {
-            if (!o) setFormLaunch(null);
-          }}
-        />
-      ) : null}
+      <FormSubmitDialog
+        key={formLaunch ? `${formLaunch.slug}:${formLaunch.title}` : "quick-entry-form"}
+        slug={formLaunch?.slug ?? ""}
+        title={formLaunch?.title}
+        prefillByLabel={formLaunch?.prefillByLabel}
+        initialForm={formLaunch?.form ?? null}
+        open={!!formLaunch}
+        onOpenChange={(o) => {
+          if (!o) setFormLaunch(null);
+        }}
+      />
       <UserFormDialog open={userOpen} onOpenChange={setUserOpen} />
     </QuickEntryContext.Provider>
   );
@@ -92,14 +118,18 @@ export function QuickEntryProvider({ children }: { children: ReactNode }) {
 export function QuickEntryHeaderButton() {
   const { items, launch } = useQuickEntry();
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="px-2 sm:px-3 shrink-0" aria-label="Quick Entry">
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">Quick Entry</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent
+        align="end"
+        className="w-56"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         {items.map((item) => {
           const Icon = item.icon;
           const missing = item.kind === "form" && !item.resolved;
@@ -109,7 +139,7 @@ export function QuickEntryHeaderButton() {
               className="cursor-pointer"
               disabled={missing}
               onSelect={() => {
-                if (!missing) launch(item);
+                if (!missing) launch(item, { defer: true });
               }}
             >
               <Icon className="h-4 w-4" />
