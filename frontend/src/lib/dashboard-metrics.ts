@@ -19,6 +19,7 @@ export const CURRENT_CLIENT_REVIEW_SLUGS = [
   "comment-tu-nous-trouve",
 ];
 export const EFFICIENCY_SLUG = "new-efficiency";
+export const ABSENCE_SLUG = "new-absence";
 
 export type FeedbackItem = {
   id: string;
@@ -350,6 +351,48 @@ export function computeEfficiencyScore(
   for (const sub of submissions) {
     if (!inRange(sub, range)) continue;
     if (!submissionMatchesUser(sub, form, user.name)) continue;
+    count += 1;
+  }
+  return Math.max(0, 100 - count * 5);
+}
+
+/** Local noon so a date-only answer stays on that calendar day. */
+function localDayTime(iso: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!match) return new Date(iso).getTime();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0).getTime();
+}
+
+function dayInRange(iso: string, range: DateRange | undefined): boolean {
+  const t = localDayTime(iso);
+  if (!Number.isFinite(t)) return false;
+  const from = range?.from ? new Date(range.from).setHours(0, 0, 0, 0) : -Infinity;
+  const toDate = range?.to ?? range?.from;
+  const to = toDate ? new Date(toDate).setHours(23, 59, 59, 999) : Infinity;
+  return t >= from && t <= to;
+}
+
+/**
+ * 100%, minus 5 points per New Absence row (Sick, Late, or Absent)
+ * whose Date falls in the selected period.
+ */
+export function computeAttendanceScore(
+  user: HubUser | undefined,
+  submissions: FormSubmission[],
+  form: HubForm | null,
+  range: DateRange | undefined,
+): number {
+  if (!user || !form) return 100;
+  const dateId = findFieldId(form, "Date") ?? findFieldIdByType(form, "date");
+  let count = 0;
+  for (const sub of submissions) {
+    if (!submissionMatchesUser(sub, form, user.name)) continue;
+    const rawDate = dateId ? String(sub.answers[dateId] ?? "").trim() : "";
+    if (rawDate) {
+      if (!dayInRange(rawDate, range)) continue;
+    } else if (!inRange(sub, range)) {
+      continue;
+    }
     count += 1;
   }
   return Math.max(0, 100 - count * 5);

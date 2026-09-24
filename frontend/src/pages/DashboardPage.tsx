@@ -46,11 +46,13 @@ import {
   BONUS_SLUG,
   REVIEW_SLUGS,
   EFFICIENCY_SLUG,
+  ABSENCE_SLUG,
   avgStarRating,
   collectFeedback,
   computeBonuses,
   computeEarnings,
   computeEfficiencyScore,
+  computeAttendanceScore,
   countFeedbackByAudience,
   countFiveStarReviews,
   dateInRange,
@@ -105,6 +107,8 @@ export default function DashboardPage() {
   const [reviewData, setReviewData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
   const [efficiencyForm, setEfficiencyForm] = useState<HubForm | null>(null);
   const [efficiencySubs, setEfficiencySubs] = useState<FormSubmission[]>([]);
+  const [absenceForm, setAbsenceForm] = useState<HubForm | null>(null);
+  const [absenceSubs, setAbsenceSubs] = useState<FormSubmission[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
   const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
 
@@ -115,16 +119,19 @@ export default function DashboardPage() {
       const f = forms.find((x) => x.slug === PAYROLL_SLUG) ?? null;
       const b = forms.find((x) => x.slug === BONUS_SLUG) ?? null;
       const e = forms.find((x) => x.slug === EFFICIENCY_SLUG) ?? null;
+      const absence = forms.find((x) => x.slug === ABSENCE_SLUG) ?? null;
       const reviewForms = forms.filter((x) => REVIEW_SLUGS.includes(x.slug));
       if (!active) return;
       setPayrollForm(f);
       setBonusForm(b);
       setEfficiencyForm(e);
-      const [subs, bsubs, rsubs, esubs, bonuses] = await Promise.all([
+      setAbsenceForm(absence);
+      const [subs, bsubs, rsubs, esubs, asubs, bonuses] = await Promise.all([
         f ? fetchSubmissions(f.id) : Promise.resolve([]),
         b ? fetchSubmissions(b.id) : Promise.resolve([]),
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
         e ? fetchSubmissions(e.id) : Promise.resolve([]),
+        absence ? fetchSubmissions(absence.id).catch(() => []) : Promise.resolve([]),
         fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
       ]);
       if (!active) return;
@@ -132,6 +139,7 @@ export default function DashboardPage() {
       setBonusSubs(bsubs);
       setReviewData(reviewForms.map((form, i) => ({ form, subs: rsubs[i] ?? [] })));
       setEfficiencySubs(esubs);
+      setAbsenceSubs(asubs);
       setLockIns(bonuses);
     })();
     return () => {
@@ -198,6 +206,14 @@ export default function DashboardPage() {
   const efficiencyLabel = `${efficiency}%`;
   const efficiencyBadge =
     efficiency === 100 ? "Perfect" : efficiency >= 80 ? "Above Avg" : "Needs Work";
+
+  const attendance = useMemo(
+    () => computeAttendanceScore(selected, absenceSubs, absenceForm, range),
+    [selected, absenceForm, absenceSubs, range],
+  );
+  const attendanceLabel = `${attendance}%`;
+  const attendanceBadge =
+    attendance === 100 ? "Perfect" : attendance >= 95 ? "On target" : "Below target";
 
   const pendingLockIns = useMemo(() => {
     if (!selected) return [];
@@ -430,6 +446,7 @@ export default function DashboardPage() {
                 From Hub form data for this period.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                <MetricBox label="ATTENDANCE" value={attendanceLabel} badge={attendanceBadge} badgeTone="emerald" />
                 <MetricBox label="EFFICIENCY" value={efficiencyLabel} badge={efficiencyBadge} badgeTone="emerald" />
               </div>
             </div>
