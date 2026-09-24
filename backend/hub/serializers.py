@@ -71,6 +71,9 @@ class HubUserSerializer(serializers.ModelSerializer):
     passwordConfigured = serializers.BooleanField(
         source="password_configured", read_only=True
     )
+    pictureThumb = serializers.CharField(
+        source="picture_thumb", read_only=True, allow_blank=True, default=""
+    )
     hireDate = serializers.DateField(
         source="hire_date", required=False, allow_null=True
     )
@@ -104,6 +107,7 @@ class HubUserSerializer(serializers.ModelSerializer):
             "sectors",
             "workDays",
             "picture",
+            "pictureThumb",
             "position",
             "jobberId",
             "ghlId",
@@ -150,9 +154,29 @@ class HubUserSerializer(serializers.ModelSerializer):
                         data.pop(key, None)
         return data
 
+    def _apply_picture_thumb(self, validated_data):
+        if "picture" not in validated_data:
+            return
+        from .services.pictures import picture_thumb
+
+        validated_data["picture_thumb"] = picture_thumb(
+            validated_data.get("picture") or ""
+        )
+
+    def create(self, validated_data):
+        self._apply_picture_thumb(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._apply_picture_thumb(validated_data)
+        return super().update(instance, validated_data)
+
 
 class HubUserListSerializer(HubUserSerializer):
-    """List payload without photos — those can be 1MB+ in production."""
+    """List payload without full photos — those can be 1MB+ in production.
+
+    pictureThumb is a small JPEG (or the original URL) so avatars still render.
+    """
 
     class Meta(HubUserSerializer.Meta):
         fields = [f for f in HubUserSerializer.Meta.fields if f != "picture"]

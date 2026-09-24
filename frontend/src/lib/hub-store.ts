@@ -66,7 +66,7 @@ function normalize(u: Record<string, unknown>): HubUser {
     status: (u.status as UserStatus) ?? "active",
     sectors: Array.isArray(u.sectors) ? (u.sectors as string[]) : [],
     workDays: num(u.workDays),
-    picture: (u.picture as string) || undefined,
+    picture: (u.picture as string) || (u.pictureThumb as string) || undefined,
     position: (u.position as Position) || undefined,
     jobberId: (u.jobberId as string) || undefined,
     ghlId: (u.ghlId as string) || undefined,

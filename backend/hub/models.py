@@ -46,6 +46,9 @@ class HubUser(TimeStampedModel):
         max_digits=8, decimal_places=2, null=True, blank=True
     )
     picture = models.TextField(blank=True, default="")
+    # Small JPEG data-URL (or the original URL) so lists can show avatars
+    # without loading the full photo, which is often 1MB+ of base64.
+    picture_thumb = models.TextField(blank=True, default="")
     position = models.CharField(max_length=128, blank=True, default="")
     jobber_id = models.CharField(max_length=128, blank=True, default="")
     ghl_id = models.CharField(max_length=128, blank=True, default="")

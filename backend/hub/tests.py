@@ -600,9 +600,50 @@ class PublicUserDirectoryTests(TestCase):
         self.assertEqual(listing.status_code, 200)
         row = next(u for u in listing.data if u["name"] == "List Admin")
         self.assertNotIn("picture", row)
+        # Invalid base64 cannot be resized, so the list avatar stays empty.
+        self.assertEqual(row["pictureThumb"], "")
         detail = client.get(f"/api/users/{admin.id}/")
         self.assertEqual(detail.status_code, 200)
         self.assertTrue(detail.data["picture"].startswith("data:image/png"))
+
+    def test_auth_user_list_includes_picture_thumb(self):
+        import base64
+        import io
+
+        from PIL import Image
+        from rest_framework.test import APIClient
+
+        from hub.models import HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        img = Image.new("RGB", (320, 240), (20, 80, 160))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        picture = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+        admin = HubUser.objects.create(
+            name="Thumb Admin",
+            email="thumb-admin@test.local",
+            role=HubUser.Role.ADMIN,
+            picture=picture,
+        )
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(admin)['access']}"
+        )
+        created = client.patch(
+            f"/api/users/{admin.id}/",
+            {"picture": picture},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 200)
+        self.assertTrue(created.data["pictureThumb"].startswith("data:image/jpeg;base64,"))
+        self.assertLess(len(created.data["pictureThumb"]), len(picture))
+
+        listing = client.get("/api/users/")
+        row = next(u for u in listing.data if u["name"] == "Thumb Admin")
+        self.assertNotIn("picture", row)
+        self.assertEqual(row["pictureThumb"], created.data["pictureThumb"])
 
 
 class FormUserExcludePersistTests(TestCase):
