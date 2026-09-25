@@ -341,7 +341,7 @@ class HubAlert(TimeStampedModel):
 
 
 class HubNotificationEmail(TimeStampedModel):
-    """Office contacts that get Hub leave-submit alerts via GHL Conversations."""
+    """Office contacts for Hub alerts (leave, complaints) via GHL Conversations."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)

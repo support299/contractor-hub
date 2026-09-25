@@ -974,6 +974,142 @@ class FeedbackNotifyTests(TestCase):
         mock_send.assert_not_called()
 
 
+class ComplaintNotifyTests(TestCase):
+    def setUp(self):
+        from hub.models import HubForm, HubNotificationEmail, HubUser
+
+        self.form = HubForm.objects.create(
+            name="New Complaint",
+            slug="new-complaint",
+            fields=[
+                {"id": "client", "type": "single_line", "label": "Client Name"},
+                {"id": "team", "type": "users", "label": "Team"},
+                {"id": "resp", "type": "users", "label": "Responsible"},
+                {
+                    "id": "kind",
+                    "type": "dropdown",
+                    "label": "Type of Complaint",
+                    "options": ["Missed Areas"],
+                },
+            ],
+        )
+        self.tech = HubUser.objects.create(
+            name="Alex Cleaner",
+            email="alex-co@test.local",
+            phone="+15551111",
+            role=HubUser.Role.EMPLOYEE,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.lead = HubUser.objects.create(
+            name="Pat Lead",
+            email="pat-co@test.local",
+            phone="+15552222",
+            role=HubUser.Role.CONTRACTOR,
+            status=HubUser.Status.ACTIVE,
+        )
+        self.admin = HubUser.objects.create(
+            name="Boss",
+            email="boss-co@test.local",
+            role=HubUser.Role.ADMIN,
+            status=HubUser.Status.ACTIVE,
+        )
+        HubNotificationEmail.objects.create(
+            email="office@cotg.com", phone="+15559999", label="Office"
+        )
+
+    def _submit(self, answers=None):
+        from hub.models import HubFormSubmission
+
+        return HubFormSubmission.objects.create(
+            form=self.form,
+            answers=answers
+            or {
+                "client": "Jane Client",
+                "team": [str(self.tech.id)],
+                "resp": [str(self.lead.id), str(self.admin.id)],
+                "kind": "Missed Areas",
+            },
+        )
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms_to_phone", return_value=True)
+    def test_office_and_named_staff(self, mock_office_sms, mock_staff_sms, mock_email):
+        from hub.models import HubNotification
+        from hub.services.complaint_notify import maybe_notify_complaint
+
+        sub = self._submit()
+        maybe_notify_complaint(sub)
+        maybe_notify_complaint(sub)
+
+        notes = HubNotification.objects.filter(type="client_complaint")
+        self.assertEqual(notes.count(), 3)
+        by_recipient = {n.recipient_id: n for n in notes}
+        self.assertEqual(
+            by_recipient[self.admin.id].body,
+            "Jane Client: Missed Areas. Responsible: Pat Lead, Boss.",
+        )
+        self.assertEqual(
+            by_recipient[self.admin.id].link,
+            f"/admin/forms/{self.form.id}/submissions",
+        )
+        self.assertIn("includes you", by_recipient[self.tech.id].body)
+        self.assertEqual(
+            by_recipient[self.tech.id].link,
+            f"/admin/dashboard?user={self.tech.id}",
+        )
+        self.assertEqual(by_recipient[self.lead.id].recipient_id, self.lead.id)
+
+        emails = sorted(call.kwargs["email"] for call in mock_email.call_args_list)
+        self.assertEqual(emails, ["alex-co@test.local", "office@cotg.com", "pat-co@test.local"])
+        self.assertEqual(mock_staff_sms.call_count, 2)
+        mock_office_sms.assert_called_once()
+        self.assertEqual(mock_office_sms.call_args.args[0], "+15559999")
+        self.assertIn("Jane Client", mock_office_sms.call_args.args[1])
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms_to_phone", return_value=True)
+    def test_other_form_skipped(self, mock_office_sms, mock_staff_sms, mock_email):
+        from hub.models import HubForm, HubFormSubmission, HubNotification
+        from hub.services.complaint_notify import maybe_notify_complaint
+
+        form = HubForm.objects.create(
+            name="Payroll",
+            slug="new-payroll-records",
+            fields=[{"id": "u", "type": "users", "label": "Staff"}],
+        )
+        sub = HubFormSubmission.objects.create(
+            form=form, answers={"u": [str(self.tech.id)]}
+        )
+        maybe_notify_complaint(sub)
+        self.assertEqual(HubNotification.objects.count(), 0)
+        mock_email.assert_not_called()
+        mock_staff_sms.assert_not_called()
+        mock_office_sms.assert_not_called()
+
+    @patch("hub.services.notify_email.send_conversation_email", return_value=True)
+    @patch("hub.services.notify_sms.send_conversation_sms_to_phone", return_value=True)
+    def test_name_fallback_still_notifies_office(self, mock_office_sms, mock_email):
+        from hub.models import HubForm, HubFormSubmission, HubNotification
+        from hub.services.complaint_notify import maybe_notify_complaint
+
+        form = HubForm.objects.create(
+            name="Client Complaint",
+            slug="issue-log",
+            fields=[{"id": "c", "type": "single_line", "label": "Client Name"}],
+        )
+        sub = HubFormSubmission.objects.create(form=form, answers={"c": "Sam"})
+        maybe_notify_complaint(sub)
+        self.assertEqual(
+            HubNotification.objects.filter(type="client_complaint").count(), 1
+        )
+        mock_email.assert_called_once()
+        self.assertEqual(mock_email.call_args.kwargs["email"], "office@cotg.com")
+        self.assertIn("Sam", mock_email.call_args.kwargs["message"])
+        mock_office_sms.assert_called_once()
+
+
 class PhoneFromContactTests(SimpleTestCase):
     def test_primary_phone(self):
         from hub.services.ghl import phone_from_contact
