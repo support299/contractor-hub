@@ -155,38 +155,68 @@ export function rangeToVisitQuery(range: { from?: Date; to?: Date } | undefined)
   return { startAtAfter: start.toISOString(), startAtBefore: end.toISOString() };
 }
 
+export type GoogleReviewCleaner = {
+  id: string;
+  name: string;
+};
+
 export type GoogleReviewRow = {
   id: string;
   reviewerName: string;
   comment: string;
   starRating: number;
   dateAdded: string | null;
+  cleaners: GoogleReviewCleaner[];
 };
 
-export async function fetchGoogleReviewSummary(params: {
-  startAtAfter?: string;
-  startAtBefore?: string;
-}): Promise<{ fiveStar: number; reviews: GoogleReviewRow[] }> {
-  const q = new URLSearchParams();
-  if (params.startAtAfter) q.set("start_at_after", params.startAtAfter);
-  if (params.startAtBefore) q.set("start_at_before", params.startAtBefore);
-  const qs = q.toString();
-  const data = await api<{
-    five_star?: number;
-    reviews?: {
-      id?: string;
-      reviewer_name?: string;
-      comment?: string;
-      star_rating?: number;
-      date_added?: string | null;
-    }[];
-  }>(`/reviews/google-summary/${qs ? `?${qs}` : ""}`);
-  const reviews: GoogleReviewRow[] = (data?.reviews ?? []).map((row) => ({
+type GoogleReviewPayload = {
+  id?: string;
+  reviewer_name?: string;
+  comment?: string;
+  star_rating?: number;
+  date_added?: string | null;
+  cleaners?: { id?: string; name?: string }[];
+};
+
+function mapGoogleReview(row: GoogleReviewPayload): GoogleReviewRow {
+  return {
     id: String(row.id ?? ""),
     reviewerName: String(row.reviewer_name ?? ""),
     comment: String(row.comment ?? ""),
     starRating: Number(row.star_rating) || 0,
     dateAdded: row.date_added ? String(row.date_added) : null,
-  }));
+    cleaners: (row.cleaners ?? []).map((c) => ({
+      id: String(c.id ?? ""),
+      name: String(c.name ?? ""),
+    })),
+  };
+}
+
+export async function fetchGoogleReviewSummary(params: {
+  startAtAfter?: string;
+  startAtBefore?: string;
+  technician?: string;
+}): Promise<{ fiveStar: number; reviews: GoogleReviewRow[] }> {
+  const q = new URLSearchParams();
+  if (params.startAtAfter) q.set("start_at_after", params.startAtAfter);
+  if (params.startAtBefore) q.set("start_at_before", params.startAtBefore);
+  if (params.technician) q.set("technician", params.technician);
+  const qs = q.toString();
+  const data = await api<{
+    five_star?: number;
+    reviews?: GoogleReviewPayload[];
+  }>(`/reviews/google-summary/${qs ? `?${qs}` : ""}`);
+  const reviews = (data?.reviews ?? []).map(mapGoogleReview);
   return { fiveStar: Number(data?.five_star) || 0, reviews };
+}
+
+export async function updateGoogleReviewCleaners(
+  reviewId: string,
+  cleanerIds: string[],
+): Promise<GoogleReviewCleaner[]> {
+  const data = await api<GoogleReviewPayload>(
+    `/reviews/google/${encodeURIComponent(reviewId)}/cleaners/`,
+    { method: "PATCH", body: { cleaner_ids: cleanerIds } },
+  );
+  return mapGoogleReview(data).cleaners;
 }

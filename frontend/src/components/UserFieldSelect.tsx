@@ -216,6 +216,9 @@ interface UsersMultiSelectProps {
   users: HubUser[];
   value: string[];
   onChange: (v: string[]) => void;
+  /** When true, `value` is Hub user ids. Otherwise it is display names. */
+  byId?: boolean;
+  placeholder?: string;
   compact?: boolean;
   className?: string;
 }
@@ -224,6 +227,8 @@ export function UsersMultiSelect({
   users,
   value,
   onChange,
+  byId = false,
+  placeholder = "Select users…",
   compact,
   className,
 }: UsersMultiSelectProps) {
@@ -235,9 +240,15 @@ export function UsersMultiSelect({
     return <p className="text-sm text-muted-foreground">No users available.</p>;
   }
 
-  const toggle = (name: string) => {
-    if (value.includes(name)) onChange(value.filter((n) => n !== name));
-    else onChange([...value, name]);
+  const tokenOf = (user: HubUser) => (byId ? user.id : user.name);
+  const userFor = (token: string) =>
+    byId
+      ? (users.find((u) => u.id === token) ?? { id: token, name: token, picture: undefined })
+      : userByName(users, token);
+
+  const toggle = (token: string) => {
+    if (value.includes(token)) onChange(value.filter((n) => n !== token));
+    else onChange([...value, token]);
   };
 
   return (
@@ -251,14 +262,14 @@ export function UsersMultiSelect({
       >
         <div className="flex flex-wrap gap-1 items-center min-w-0">
           {value.length === 0 ? (
-            <span className="text-muted-foreground">Select users…</span>
+            <span className="text-muted-foreground">{placeholder}</span>
           ) : (
-            value.map((name) => {
-              const u = userByName(users, name);
+            value.map((token) => {
+              const u = userFor(token);
               return (
-                <Badge key={name} variant="secondary" className="gap-1.5 pl-1 pr-1.5 pointer-events-none">
-                  <UserAvatar picture={u.picture} name={name} size={18} className="rounded-sm" />
-                  {name}
+                <Badge key={token} variant="secondary" className="gap-1.5 pl-1 pr-1.5 pointer-events-none">
+                  <UserAvatar picture={u.picture} name={u.name} size={18} className="rounded-sm" />
+                  {u.name}
                 </Badge>
               );
             })
@@ -272,9 +283,10 @@ export function UsersMultiSelect({
             <p className="px-3 py-6 text-sm text-center text-muted-foreground">No users found.</p>
           ) : (
             list.map((u) => {
-              const selected = value.includes(u.name);
+              const token = tokenOf(u);
+              const selected = value.includes(token);
               return (
-                <UserPickButton key={u.id} onPick={() => toggle(u.name)}>
+                <UserPickButton key={u.id} onPick={() => toggle(token)}>
                   <Check className={`mr-2 h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
                   <UserFieldRow user={u} />
                 </UserPickButton>

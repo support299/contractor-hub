@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import timedelta
 from typing import Any
 
@@ -11,7 +12,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from hub.models import GhlGoogleReview, GhlInternalAuth
+from hub.models import GhlGoogleReview, GhlInternalAuth, HubUser
 
 logger = logging.getLogger(__name__)
 
@@ -302,13 +303,27 @@ def _google_review_qs(*, start=None, end=None, five_star_only: bool = False):
     return qs
 
 
-def count_five_star(*, start=None, end=None) -> int:
-    return _google_review_qs(start=start, end=end, five_star_only=True).count()
+def _cleaner_rows(rev: GhlGoogleReview) -> list[dict[str, str]]:
+    people = sorted(
+        rev.cleaners.all(),
+        key=lambda u: ((u.name or "").lower(), str(u.id)),
+    )
+    return [{"id": str(u.id), "name": u.name or ""} for u in people]
 
 
-def serialize_google_reviews(*, start=None, end=None) -> list[dict[str, Any]]:
+def count_five_star(*, start=None, end=None, cleaner_id=None) -> int:
+    qs = _google_review_qs(start=start, end=end, five_star_only=True)
+    if cleaner_id:
+        qs = qs.filter(cleaners__id=cleaner_id)
+    return qs.count()
+
+
+def serialize_google_reviews(*, start=None, end=None, cleaner_id=None) -> list[dict[str, Any]]:
+    qs = _google_review_qs(start=start, end=end).prefetch_related("cleaners")
+    if cleaner_id:
+        qs = qs.filter(cleaners__id=cleaner_id)
     rows = []
-    for rev in _google_review_qs(start=start, end=end).order_by("-date_added"):
+    for rev in qs.order_by("-date_added"):
         rows.append(
             {
                 "id": rev.ghl_id,
@@ -316,6 +331,41 @@ def serialize_google_reviews(*, start=None, end=None) -> list[dict[str, Any]]:
                 "comment": rev.comment,
                 "star_rating": rev.star_rating,
                 "date_added": rev.date_added.isoformat() if rev.date_added else None,
+                "cleaners": _cleaner_rows(rev),
             }
         )
     return rows
+
+
+def serialize_one_google_review(rev: GhlGoogleReview) -> dict[str, Any]:
+    return {
+        "id": rev.ghl_id,
+        "reviewer_name": rev.reviewer_name,
+        "comment": rev.comment,
+        "star_rating": rev.star_rating,
+        "date_added": rev.date_added.isoformat() if rev.date_added else None,
+        "cleaners": _cleaner_rows(rev),
+    }
+
+
+def set_review_cleaners(ghl_id: str, cleaner_ids) -> GhlGoogleReview | None:
+    """Replace cleaner tags. Sync does not call this, so a later pull keeps them."""
+    review = (
+        GhlGoogleReview.objects.filter(
+            ghl_id=ghl_id,
+            source=GOOGLE_REVIEW_SOURCE,
+            deleted=False,
+        )
+        .first()
+    )
+    if review is None:
+        return None
+    ids = []
+    for raw in cleaner_ids or []:
+        try:
+            ids.append(uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    users = HubUser.objects.filter(id__in=ids).exclude(role=HubUser.Role.DISPLAY)
+    review.cleaners.set(users)
+    return GhlGoogleReview.objects.prefetch_related("cleaners").get(pk=review.pk)

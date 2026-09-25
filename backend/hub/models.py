@@ -596,6 +596,11 @@ class GhlGoogleReview(TimeStampedModel):
     source = models.IntegerField(default=247)
     deleted = models.BooleanField(default=False)
     date_added = models.DateTimeField(null=True, blank=True)
+    cleaners = models.ManyToManyField(
+        HubUser,
+        blank=True,
+        related_name="google_reviews",
+    )
 
     class Meta:
         ordering = ["-date_added"]

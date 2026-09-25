@@ -30,6 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
+  fetchGoogleReviewSummary,
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
@@ -54,7 +55,6 @@ import {
   computeEfficiencyScore,
   computeAttendanceScore,
   countFeedbackByAudience,
-  countFiveStarReviews,
   dateInRange,
   formatMoney,
   initialsOf,
@@ -111,6 +111,7 @@ export default function DashboardPage() {
   const [absenceSubs, setAbsenceSubs] = useState<FormSubmission[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
   const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
+  const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -161,6 +162,27 @@ export default function DashboardPage() {
     };
   }, [range]);
 
+  useEffect(() => {
+    if (!selected?.id) {
+      setGoogleFiveStarCount(0);
+      return;
+    }
+    let active = true;
+    fetchGoogleReviewSummary({
+      ...rangeToVisitQuery(range),
+      technician: selected.id,
+    })
+      .then((data) => {
+        if (active) setGoogleFiveStarCount(data.fiveStar);
+      })
+      .catch(() => {
+        if (active) setGoogleFiveStarCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected?.id, range]);
+
   const totalEarnings = useMemo(
     () => computeEarnings(selected, payrollSubs, payrollForm, range),
     [selected, payrollSubs, payrollForm, range],
@@ -190,7 +212,7 @@ export default function DashboardPage() {
     () => collectFeedback(selected, reviewData, range),
     [selected, reviewData, range],
   );
-  const fiveStarCount = useMemo(() => countFiveStarReviews(feedback), [feedback]);
+  const fiveStarCount = googleFiveStarCount;
   const feedbackAudience = useMemo(() => countFeedbackByAudience(feedback), [feedback]);
   const feedbackSub =
     feedback.length === 0
@@ -347,9 +369,9 @@ export default function DashboardPage() {
             icon={<CalendarCheck className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard
-            label="Five-Star Reviews"
+            label="5 Star Google Reviews"
             value={String(fiveStarCount)}
-            sub={fiveStarCount === 1 ? "Perfect score" : "Perfect scores"}
+            sub="From Google"
             icon={<Star className="h-4 w-4 text-amber-500" />}
           />
           <StatCard

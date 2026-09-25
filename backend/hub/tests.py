@@ -1823,6 +1823,7 @@ class GoogleReviewSummaryApiTests(TestCase):
         self.assertEqual(res.data["five_star"], 1)
         self.assertEqual(len(res.data["reviews"]), 1)
         self.assertEqual(res.data["reviews"][0]["reviewer_name"], "")
+        self.assertEqual(res.data["reviews"][0]["cleaners"], [])
 
     @patch("hub.google_review_views.sync_google_reviews")
     def test_display_can_read(self, mock_sync):
@@ -1835,6 +1836,120 @@ class GoogleReviewSummaryApiTests(TestCase):
     def test_staff_forbidden(self):
         res = self.emp_client.get("/api/reviews/google-summary/")
         self.assertEqual(res.status_code, 403)
+
+    @patch("hub.google_review_views.sync_google_reviews")
+    def test_staff_reads_only_own_tagged_reviews(self, mock_sync):
+        from datetime import datetime, timezone as dt_timezone
+
+        from hub.models import GhlGoogleReview, HubUser
+
+        mock_sync.return_value = 2
+        other = HubUser.objects.create(
+            name="Other",
+            email="grev-other@test.local",
+            role=HubUser.Role.EMPLOYEE,
+        )
+        mine = GhlGoogleReview.objects.create(
+            ghl_id="mine",
+            reviewer_name="Jane",
+            star_rating=5,
+            source=247,
+            date_added=datetime(2026, 9, 9, 18, 0, tzinfo=dt_timezone.utc),
+        )
+        mine.cleaners.add(self.employee)
+        theirs = GhlGoogleReview.objects.create(
+            ghl_id="theirs",
+            star_rating=5,
+            source=247,
+            date_added=datetime(2026, 9, 10, 18, 0, tzinfo=dt_timezone.utc),
+        )
+        theirs.cleaners.add(other)
+        GhlGoogleReview.objects.create(
+            ghl_id="four",
+            star_rating=4,
+            source=247,
+            date_added=datetime(2026, 9, 11, 18, 0, tzinfo=dt_timezone.utc),
+        ).cleaners.add(self.employee)
+
+        denied = self.emp_client.get(
+            "/api/reviews/google-summary/",
+            {"technician": str(other.id)},
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        res = self.emp_client.get(
+            "/api/reviews/google-summary/",
+            {
+                "technician": str(self.employee.id),
+                "start_at_after": "2026-09-01T00:00:00Z",
+                "start_at_before": "2026-09-30T23:59:59Z",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["five_star"], 1)
+        self.assertEqual(
+            sorted(row["id"] for row in res.data["reviews"]),
+            ["four", "mine"],
+        )
+
+    @patch("hub.google_review_views.sync_google_reviews")
+    def test_admin_tags_cleaners_and_sync_keeps_them(self, mock_sync):
+        from datetime import datetime, timezone as dt_timezone
+
+        from hub.models import GhlGoogleReview, HubUser
+        from hub.services.ghl_internal import upsert_google_reviews
+
+        mock_sync.return_value = 1
+        display = HubUser.objects.get(email="grev-tv@test.local")
+        review = GhlGoogleReview.objects.create(
+            ghl_id="tag-me",
+            reviewer_name="Sam",
+            star_rating=5,
+            source=247,
+            comment="Great",
+            date_added=datetime(2026, 9, 9, 18, 0, tzinfo=dt_timezone.utc),
+        )
+        res = self.admin_client.patch(
+            f"/api/reviews/google/{review.ghl_id}/cleaners/",
+            {"cleaner_ids": [str(self.employee.id), str(display.id)]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in res.data["cleaners"]],
+            [str(self.employee.id)],
+        )
+
+        denied = self.emp_client.patch(
+            f"/api/reviews/google/{review.ghl_id}/cleaners/",
+            {"cleaner_ids": []},
+            format="json",
+        )
+        self.assertEqual(denied.status_code, 403)
+
+        upsert_google_reviews(
+            [
+                {
+                    "id": "tag-me",
+                    "reviewerName": "Sam",
+                    "comment": "Updated",
+                    "starRating": 5,
+                    "source": 247,
+                    "deleted": False,
+                    "dateAdded": "2026-09-09T18:00:00Z",
+                }
+            ]
+        )
+        review.refresh_from_db()
+        self.assertEqual(review.comment, "Updated")
+        self.assertEqual(list(review.cleaners.values_list("id", flat=True)), [self.employee.id])
+
+        summary = self.admin_client.get(
+            "/api/reviews/google-summary/",
+            {"technician": str(self.employee.id)},
+        )
+        self.assertEqual(summary.status_code, 200)
+        self.assertEqual(summary.data["five_star"], 1)
 
 
 class NotificationEmailApiTests(TestCase):

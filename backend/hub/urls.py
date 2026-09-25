@@ -114,5 +114,10 @@ urlpatterns = [
         google_review_views.GoogleReviewSummaryView.as_view(),
         name="google-review-summary",
     ),
+    path(
+        "reviews/google/<str:ghl_id>/cleaners/",
+        google_review_views.GoogleReviewCleanersView.as_view(),
+        name="google-review-cleaners",
+    ),
     path("", include(router.urls)),
 ]

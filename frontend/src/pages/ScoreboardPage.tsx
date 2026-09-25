@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   CalendarCheck,
@@ -10,10 +10,12 @@ import {
   Star,
   Users,
 } from "lucide-react";
-import { useUsers, getSectors, type HubUser, type Role } from "@/lib/hub-store";
+import { useUsers, useSession, getSectors, type HubUser, type Role } from "@/lib/hub-store";
+import { isAdminSession } from "@/lib/api";
 import { fetchForms, fetchSubmissions, type HubForm, type FormSubmission } from "@/lib/forms-store";
 import {
   fetchGoogleReviewSummary,
+  updateGoogleReviewCleaners,
   fetchLockInBonuses,
   fetchVisitSummary,
   isConfirmedLockIn,
@@ -32,7 +34,6 @@ import {
   avgStarRatingForNames,
   collectFeedbackForNames,
   countFeedbackByAudience,
-  countFiveStarReviews,
   dateInRange,
   formatMomDelta,
   initialsOf,
@@ -50,7 +51,9 @@ import {
 } from "@/components/ui/select";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { UsersMultiSelect } from "@/components/UserFieldSelect";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type Audience = "all" | "employee" | "contractor";
 
@@ -73,9 +76,11 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 export default function ScoreboardPage() {
   useDocumentTitle("Scoreboard");
   const users = useUsers();
+  const session = useSession();
   const location = useLocation();
   const navigate = useNavigate();
   const tv = location.pathname.startsWith("/tv/scoreboard");
+  const canTagCleaners = !tv && isAdminSession(session);
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [monthValue, setMonthValue] = useState(defaultMonth);
@@ -93,6 +98,7 @@ export default function ScoreboardPage() {
   const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
   const [prevGoogleFiveStarCount, setPrevGoogleFiveStarCount] = useState(0);
   const [googleReviews, setGoogleReviews] = useState<GoogleReviewRow[]>([]);
+  const cleanerSaveSeq = useRef<Record<string, number>>({});
 
   useEffect(() => {
     let active = true;
@@ -142,6 +148,10 @@ export default function ScoreboardPage() {
   const team = useMemo(
     () => filterTeam(users, audience, sector),
     [users, audience, sector],
+  );
+  const taggableUsers = useMemo(
+    () => users.filter((u) => u.status === "active" && u.role !== "display"),
+    [users],
   );
   const nameSet = useMemo(() => new Set(team.map((u) => u.name)), [team]);
   const idSet = useMemo(() => new Set(team.map((u) => u.id)), [team]);
@@ -245,14 +255,44 @@ export default function ScoreboardPage() {
       .map((u) => {
         const visits = visitSummary.byTechnician[u.id] ?? 0;
         const { avg, count } = avgStarRating(u, reviewData, range);
-        const fiveStars = countFiveStarReviews(collectFeedbackForNames(new Set([u.name]), reviewData, range));
+        const fiveStars = googleReviews.filter(
+          (rev) => rev.starRating === 5 && rev.cleaners.some((c) => c.id === u.id),
+        ).length;
         return { user: u, visits, rating: avg, ratingCount: count, fiveStars };
       })
       .sort((a, b) => b.visits - a.visits || b.fiveStars - a.fiveStars);
-  }, [team, visitSummary, reviewData, range]);
+  }, [team, visitSummary, reviewData, range, googleReviews]);
 
   const audienceLabel =
     audience === "employee" ? "employees" : audience === "contractor" ? "contractors" : "team";
+
+  const saveCleaners = async (reviewId: string, cleanerIds: string[]) => {
+    const seq = (cleanerSaveSeq.current[reviewId] ?? 0) + 1;
+    cleanerSaveSeq.current[reviewId] = seq;
+    const named = cleanerIds.map((id) => ({
+      id,
+      name: taggableUsers.find((u) => u.id === id)?.name ?? "",
+    }));
+    let previous: GoogleReviewRow["cleaners"] = [];
+    setGoogleReviews((rows) => {
+      previous = rows.find((row) => row.id === reviewId)?.cleaners ?? [];
+      return rows.map((row) => (row.id === reviewId ? { ...row, cleaners: named } : row));
+    });
+    try {
+      const cleaners = await updateGoogleReviewCleaners(reviewId, cleanerIds);
+      if (cleanerSaveSeq.current[reviewId] !== seq) return;
+      setGoogleReviews((rows) =>
+        rows.map((row) => (row.id === reviewId ? { ...row, cleaners } : row)),
+      );
+    } catch (err) {
+      console.error(err);
+      if (cleanerSaveSeq.current[reviewId] !== seq) return;
+      setGoogleReviews((rows) =>
+        rows.map((row) => (row.id === reviewId ? { ...row, cleaners: previous } : row)),
+      );
+      toast.error("Could not save cleaners");
+    }
+  };
 
   const openTvView = () => {
     navigate("/tv/scoreboard");
@@ -453,6 +493,22 @@ export default function ScoreboardPage() {
                         {rev.comment ? (
                           <p className="text-sm mt-3 text-foreground/80 whitespace-pre-wrap">
                             {rev.comment}
+                          </p>
+                        ) : null}
+                        {canTagCleaners ? (
+                          <div className="mt-3">
+                            <UsersMultiSelect
+                              users={taggableUsers}
+                              value={rev.cleaners.map((c) => c.id)}
+                              onChange={(ids) => void saveCleaners(rev.id, ids)}
+                              byId
+                              compact
+                              placeholder="Cleaners"
+                            />
+                          </div>
+                        ) : rev.cleaners.length > 0 ? (
+                          <p className="text-xs text-emerald-700 mt-2 truncate">
+                            {rev.cleaners.map((c) => c.name).filter(Boolean).join(", ")}
                           </p>
                         ) : null}
                       </div>
@@ -794,7 +850,7 @@ function LeaderRow({
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
           {ratingCount > 0 ? `${rating.toFixed(1)} (${ratingCount})` : "No ratings"}
-          {fiveStars > 0 ? ` · ${fiveStars} five-star` : ""}
+          {fiveStars > 0 ? ` · ${fiveStars} Google 5-star` : ""}
           <span className="opacity-60">· {role}</span>
         </p>
       </div>
