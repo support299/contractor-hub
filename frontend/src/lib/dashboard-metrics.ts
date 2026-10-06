@@ -23,7 +23,10 @@ export const ABSENCE_SLUG = "new-absence";
 
 /** Complaint / callback forms (slug first, then name). */
 export const COMPLAINT_FORM_SLUGS = ["new-complaint", "complaint-callback", "callback"];
-/** Damaged or lost item forms. */
+/**
+ * One Damaged/Lost form covers damaged, broken, and forgotten items.
+ * There is no separate broken/forgotten form.
+ */
 export const DAMAGED_FORM_SLUGS = [
   "damaged-lost-form",
   "damaged-or-lost-item",
@@ -31,17 +34,8 @@ export const DAMAGED_FORM_SLUGS = [
   "damaged-item",
   "damaged-items",
 ];
-/** Broken or forgotten item forms. */
-export const BROKEN_FORGOTTEN_FORM_SLUGS = [
-  "broken-forgotten",
-  "broken-or-forgotten",
-  "broken-forgotten-items",
-  "broken-forgotten-item",
-  "forgotten-items",
-  "broken-items",
-];
 
-export type IncidentKind = "complaint" | "damaged" | "broken-forgotten";
+export type IncidentKind = "complaint" | "damaged";
 
 export type IncidentItem = {
   id: string;
@@ -318,14 +312,11 @@ export function incidentKindsForForm(form: HubForm): IncidentKind[] {
   if (COMPLAINT_FORM_SLUGS.includes(slug) || /\bcomplaint\b|\bcallback\b/.test(text)) {
     kinds.push("complaint");
   }
-  if (DAMAGED_FORM_SLUGS.includes(slug) || /\bdamaged\b|\blost item\b/.test(text)) {
-    kinds.push("damaged");
-  }
   if (
-    BROKEN_FORGOTTEN_FORM_SLUGS.includes(slug) ||
-    /\bforgotten\b|\bbroken\b/.test(text)
+    DAMAGED_FORM_SLUGS.includes(slug) ||
+    /\bdamaged\b|\blost\b|\bforgotten\b|\bbroken\b/.test(text)
   ) {
-    kinds.push("broken-forgotten");
+    kinds.push("damaged");
   }
   return kinds;
 }
@@ -348,26 +339,17 @@ function answerText(value: unknown): string {
   return String(value).trim();
 }
 
-function kindFromTypeAnswer(form: HubForm, sub: FormSubmission): IncidentKind | null {
-  const chunks: string[] = [];
-  for (const field of incidentFields(form)) {
-    const label = (field.label ?? "").toLowerCase();
-    if (!/\b(type|category|kind)\b/.test(label)) continue;
-    const text = answerText(sub.answers[field.id]).toLowerCase();
-    if (text) chunks.push(text);
-  }
-  const text = chunks.join(" ");
-  if (!text) return null;
-  if (/\bforgotten\b|\bbroken\b/.test(text)) return "broken-forgotten";
-  if (/\bdamaged\b|\blost\b/.test(text)) return "damaged";
-  if (/\bcomplaint\b|\bcallback\b/.test(text)) return "complaint";
-  return null;
+function classifyIncident(form: HubForm): IncidentKind | null {
+  return incidentKindsForForm(form)[0] ?? null;
 }
 
-function classifyIncident(form: HubForm, sub: FormSubmission): IncidentKind | null {
-  const formKinds = incidentKindsForForm(form);
-  if (!formKinds.length) return null;
-  return kindFromTypeAnswer(form, sub) ?? formKinds[0];
+function displayAnswer(field: HubForm["fields"][number], value: string): string {
+  const label = (field.label ?? "").toLowerCase();
+  if (field.type === "number" && /\b(value|amount)\b/.test(label)) {
+    const n = num(value);
+    if (n || value === "0") return formatMoney(n);
+  }
+  return value;
 }
 
 function incidentWhen(form: HubForm, sub: FormSubmission): string {
@@ -407,7 +389,7 @@ export function collectIncidents(
     for (const sub of subs) {
       if (!submissionMentionsUser(sub, form, user)) continue;
       if (!incidentInRange(form, sub, range)) continue;
-      const kind = classifyIncident(form, sub);
+      const kind = classifyIncident(form);
       if (!kind) continue;
       const details: { label: string; value: string }[] = [];
       for (const field of incidentFields(form)) {
@@ -420,7 +402,7 @@ export function collectIncidents(
         ) {
           continue;
         }
-        const value = answerText(sub.answers[field.id]);
+        const value = displayAnswer(field, answerText(sub.answers[field.id]));
         if (!value) continue;
         details.push({ label: field.label || "Detail", value });
       }

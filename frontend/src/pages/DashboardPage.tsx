@@ -15,7 +15,6 @@ import {
   Percent,
   Phone,
   TriangleAlert,
-  PackageX,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { useUsers, useSession } from "@/lib/hub-store";
@@ -274,7 +273,6 @@ export default function DashboardPage() {
   );
   const complaints = incidents.filter((item) => item.kind === "complaint");
   const damagedItems = incidents.filter((item) => item.kind === "damaged");
-  const brokenForgotten = incidents.filter((item) => item.kind === "broken-forgotten");
 
   const shoutout = useMemo(() => {
     return (
@@ -424,27 +422,20 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <IncidentPanel
             title="Complaints"
-            hint={`Complaints and callbacks that include ${admin ? firstName : "you"}.`}
+            hint={`Complaints that include ${admin ? firstName : "you"}.`}
             empty="No complaints in this period."
             icon={<Phone className="h-4 w-4 text-rose-600" />}
             items={complaints}
           />
           <IncidentPanel
-            title="Damaged items"
-            hint={`Damaged or lost items logged on ${admin ? `${firstName}'s` : "your"} jobs.`}
-            empty="No damaged items in this period."
+            title="Damaged / lost"
+            hint={`Damaged, broken, or forgotten items logged for ${admin ? firstName : "you"}.`}
+            empty="No damaged or lost items in this period."
             icon={<TriangleAlert className="h-4 w-4 text-amber-600" />}
             items={damagedItems}
-          />
-          <IncidentPanel
-            title="Broken / forgotten"
-            hint={`Broken or forgotten items logged on ${admin ? `${firstName}'s` : "your"} jobs.`}
-            empty="No broken or forgotten items in this period."
-            icon={<PackageX className="h-4 w-4 text-orange-600" />}
-            items={brokenForgotten}
           />
         </div>
 
