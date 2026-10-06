@@ -21,6 +21,36 @@ export const CURRENT_CLIENT_REVIEW_SLUGS = [
 export const EFFICIENCY_SLUG = "new-efficiency";
 export const ABSENCE_SLUG = "new-absence";
 
+/** Complaint / callback forms (slug first, then name). */
+export const COMPLAINT_FORM_SLUGS = ["new-complaint", "complaint-callback", "callback"];
+/** Damaged or lost item forms. */
+export const DAMAGED_FORM_SLUGS = [
+  "damaged-lost-form",
+  "damaged-or-lost-item",
+  "lost-item",
+  "damaged-item",
+  "damaged-items",
+];
+/** Broken or forgotten item forms. */
+export const BROKEN_FORGOTTEN_FORM_SLUGS = [
+  "broken-forgotten",
+  "broken-or-forgotten",
+  "broken-forgotten-items",
+  "broken-forgotten-item",
+  "forgotten-items",
+  "broken-items",
+];
+
+export type IncidentKind = "complaint" | "damaged" | "broken-forgotten";
+
+export type IncidentItem = {
+  id: string;
+  kind: IncidentKind;
+  title: string;
+  details: { label: string; value: string }[];
+  when: string;
+};
+
 export type FeedbackItem = {
   id: string;
   formName: string;
@@ -265,6 +295,148 @@ export function collectFeedbackForNames(
     }
   }
   items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return items;
+}
+
+const INCIDENT_EXCLUDE_SLUGS = new Set([
+  ...REVIEW_SLUGS,
+  PAYROLL_SLUG,
+  BONUS_SLUG,
+  EFFICIENCY_SLUG,
+  ABSENCE_SLUG,
+]);
+
+function formSearchText(form: HubForm): string {
+  return `${form.slug ?? ""} ${form.name ?? ""}`.toLowerCase();
+}
+
+export function incidentKindsForForm(form: HubForm): IncidentKind[] {
+  const slug = (form.slug ?? "").toLowerCase();
+  if (INCIDENT_EXCLUDE_SLUGS.has(slug)) return [];
+  const text = formSearchText(form);
+  const kinds: IncidentKind[] = [];
+  if (COMPLAINT_FORM_SLUGS.includes(slug) || /\bcomplaint\b|\bcallback\b/.test(text)) {
+    kinds.push("complaint");
+  }
+  if (DAMAGED_FORM_SLUGS.includes(slug) || /\bdamaged\b|\blost item\b/.test(text)) {
+    kinds.push("damaged");
+  }
+  if (
+    BROKEN_FORGOTTEN_FORM_SLUGS.includes(slug) ||
+    /\bforgotten\b|\bbroken\b/.test(text)
+  ) {
+    kinds.push("broken-forgotten");
+  }
+  return kinds;
+}
+
+export function isIncidentForm(form: HubForm): boolean {
+  return incidentKindsForForm(form).length > 0;
+}
+
+function incidentFields(form: HubForm) {
+  return [...(form.fields ?? []), ...(form.extraFields ?? [])];
+}
+
+function answerText(value: unknown): string {
+  if (value == null) return "";
+  if (Array.isArray(value)) {
+    if (value.some((v) => v && typeof v === "object")) return "";
+    return value.map((v) => String(v).trim()).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") return "";
+  return String(value).trim();
+}
+
+function kindFromTypeAnswer(form: HubForm, sub: FormSubmission): IncidentKind | null {
+  const chunks: string[] = [];
+  for (const field of incidentFields(form)) {
+    const label = (field.label ?? "").toLowerCase();
+    if (!/\b(type|category|kind)\b/.test(label)) continue;
+    const text = answerText(sub.answers[field.id]).toLowerCase();
+    if (text) chunks.push(text);
+  }
+  const text = chunks.join(" ");
+  if (!text) return null;
+  if (/\bforgotten\b|\bbroken\b/.test(text)) return "broken-forgotten";
+  if (/\bdamaged\b|\blost\b/.test(text)) return "damaged";
+  if (/\bcomplaint\b|\bcallback\b/.test(text)) return "complaint";
+  return null;
+}
+
+function classifyIncident(form: HubForm, sub: FormSubmission): IncidentKind | null {
+  const formKinds = incidentKindsForForm(form);
+  if (!formKinds.length) return null;
+  return kindFromTypeAnswer(form, sub) ?? formKinds[0];
+}
+
+function incidentWhen(form: HubForm, sub: FormSubmission): string {
+  const dateField =
+    incidentFields(form).find((f) => (f.label ?? "").trim().toLowerCase() === "date") ??
+    incidentFields(form).find((f) => f.type === "date" || f.type === "date_time");
+  const raw = dateField ? answerText(sub.answers[dateField.id]) : "";
+  return raw || sub.createdAt;
+}
+
+function incidentInRange(form: HubForm, sub: FormSubmission, range: DateRange | undefined): boolean {
+  const when = incidentWhen(form, sub);
+  if (/^\d{4}-\d{2}-\d{2}/.test(when) && !when.includes("T")) {
+    return dayInRange(when, range);
+  }
+  return dateInRange(when, range);
+}
+
+function submissionMentionsUser(sub: FormSubmission, form: HubForm, user: HubUser): boolean {
+  if (submissionMatchesUser(sub, form, user.name)) return true;
+  const id = user.id;
+  if (!id) return false;
+  return submissionStaffNames(sub, form).includes(id);
+}
+
+const TITLE_NEEDLES = ["client name", "client", "customer", "item"];
+
+export function collectIncidents(
+  user: HubUser | undefined,
+  incidentData: { form: HubForm; subs: FormSubmission[] }[],
+  range: DateRange | undefined,
+): IncidentItem[] {
+  if (!user) return [];
+  const items: IncidentItem[] = [];
+  for (const { form, subs } of incidentData) {
+    if (!isIncidentForm(form)) continue;
+    for (const sub of subs) {
+      if (!submissionMentionsUser(sub, form, user)) continue;
+      if (!incidentInRange(form, sub, range)) continue;
+      const kind = classifyIncident(form, sub);
+      if (!kind) continue;
+      const details: { label: string; value: string }[] = [];
+      for (const field of incidentFields(form)) {
+        if (
+          field.type === "headline" ||
+          field.type === "subheadline" ||
+          field.type === "paragraph" ||
+          field.type === "image" ||
+          field.type === "file_upload"
+        ) {
+          continue;
+        }
+        const value = answerText(sub.answers[field.id]);
+        if (!value) continue;
+        details.push({ label: field.label || "Detail", value });
+      }
+      const titleField = details.find((d) =>
+        TITLE_NEEDLES.some((n) => d.label.toLowerCase().includes(n)),
+      );
+      items.push({
+        id: sub.id,
+        kind,
+        title: titleField?.value || form.name || "Item",
+        details: details.slice(0, 6),
+        when: incidentWhen(form, sub),
+      });
+    }
+  }
+  items.sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime());
   return items;
 }
 

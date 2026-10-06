@@ -13,6 +13,9 @@ import {
   MessageSquare,
   Lock,
   Percent,
+  Phone,
+  TriangleAlert,
+  PackageX,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 import { useUsers, useSession } from "@/lib/hub-store";
@@ -54,10 +57,13 @@ import {
   computeEarnings,
   computeEfficiencyScore,
   computeAttendanceScore,
+  collectIncidents,
   countFeedbackByAudience,
   dateInRange,
   formatMoney,
   initialsOf,
+  isIncidentForm,
+  type IncidentItem,
 } from "@/lib/dashboard-metrics";
 
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -109,6 +115,7 @@ export default function DashboardPage() {
   const [efficiencySubs, setEfficiencySubs] = useState<FormSubmission[]>([]);
   const [absenceForm, setAbsenceForm] = useState<HubForm | null>(null);
   const [absenceSubs, setAbsenceSubs] = useState<FormSubmission[]>([]);
+  const [incidentData, setIncidentData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
   const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
   const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
@@ -122,18 +129,20 @@ export default function DashboardPage() {
       const e = forms.find((x) => x.slug === EFFICIENCY_SLUG) ?? null;
       const absence = forms.find((x) => x.slug === ABSENCE_SLUG) ?? null;
       const reviewForms = forms.filter((x) => REVIEW_SLUGS.includes(x.slug));
+      const incidentForms = forms.filter((x) => isIncidentForm(x));
       if (!active) return;
       setPayrollForm(f);
       setBonusForm(b);
       setEfficiencyForm(e);
       setAbsenceForm(absence);
-      const [subs, bsubs, rsubs, esubs, asubs, bonuses] = await Promise.all([
+      const [subs, bsubs, rsubs, esubs, asubs, bonuses, isubs] = await Promise.all([
         f ? fetchSubmissions(f.id) : Promise.resolve([]),
         b ? fetchSubmissions(b.id) : Promise.resolve([]),
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
         e ? fetchSubmissions(e.id) : Promise.resolve([]),
         absence ? fetchSubmissions(absence.id).catch(() => []) : Promise.resolve([]),
         fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
+        Promise.all(incidentForms.map((form) => fetchSubmissions(form.id).catch(() => []))),
       ]);
       if (!active) return;
       setPayrollSubs(subs);
@@ -142,6 +151,7 @@ export default function DashboardPage() {
       setEfficiencySubs(esubs);
       setAbsenceSubs(asubs);
       setLockIns(bonuses);
+      setIncidentData(incidentForms.map((form, i) => ({ form, subs: isubs[i] ?? [] })));
     })();
     return () => {
       active = false;
@@ -257,6 +267,14 @@ export default function DashboardPage() {
   const lockInClientCount = uniqueLockInsByClient(periodLockIns).length;
   const pendingLockInClientCount = uniqueLockInsByClient(pendingLockIns).length;
   const lockInAmount = periodLockIns.reduce((a, r) => a + r.amount, 0);
+
+  const incidents = useMemo(
+    () => collectIncidents(selected, incidentData, range),
+    [selected, incidentData, range],
+  );
+  const complaints = incidents.filter((item) => item.kind === "complaint");
+  const damagedItems = incidents.filter((item) => item.kind === "damaged");
+  const brokenForgotten = incidents.filter((item) => item.kind === "broken-forgotten");
 
   const shoutout = useMemo(() => {
     return (
@@ -403,6 +421,30 @@ export default function DashboardPage() {
                   : "Confirmed in this period"
             }
             icon={<Lock className="h-4 w-4 text-muted-foreground" />}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <IncidentPanel
+            title="Complaints"
+            hint={`Complaints and callbacks that include ${admin ? firstName : "you"}.`}
+            empty="No complaints in this period."
+            icon={<Phone className="h-4 w-4 text-rose-600" />}
+            items={complaints}
+          />
+          <IncidentPanel
+            title="Damaged items"
+            hint={`Damaged or lost items logged on ${admin ? `${firstName}'s` : "your"} jobs.`}
+            empty="No damaged items in this period."
+            icon={<TriangleAlert className="h-4 w-4 text-amber-600" />}
+            items={damagedItems}
+          />
+          <IncidentPanel
+            title="Broken / forgotten"
+            hint={`Broken or forgotten items logged on ${admin ? `${firstName}'s` : "your"} jobs.`}
+            empty="No broken or forgotten items in this period."
+            icon={<PackageX className="h-4 w-4 text-orange-600" />}
+            items={brokenForgotten}
           />
         </div>
 
@@ -666,6 +708,76 @@ export default function DashboardPage() {
   );
 }
 
+
+function IncidentPanel({
+  title,
+  hint,
+  empty,
+  icon,
+  items,
+}: {
+  title: string;
+  hint: string;
+  empty: string;
+  icon: React.ReactNode;
+  items: IncidentItem[];
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon}
+          <h3 className="font-semibold truncate">{title}</h3>
+        </div>
+        <span className="text-sm font-bold tabular-nums">{items.length}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">{hint}</p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">{empty}</p>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((item) => (
+            <IncidentRow key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function formatIncidentWhen(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!match) return "";
+  if (!iso.includes("T")) {
+    return format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])), "LLL d, y");
+  }
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? "" : format(parsed, "LLL d, y");
+}
+
+function IncidentRow({ item }: { item: IncidentItem }) {
+  const whenLabel = item.when ? formatIncidentWhen(item.when) : "";
+  return (
+    <li className="rounded-lg border p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold truncate">{item.title}</p>
+        {whenLabel ? (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{whenLabel}</span>
+        ) : null}
+      </div>
+      {item.details.length > 0 ? (
+        <dl className="mt-2 space-y-1">
+          {item.details.map((detail) => (
+            <div key={detail.label} className="text-xs">
+              <dt className="text-muted-foreground inline">{detail.label}: </dt>
+              <dd className="inline text-foreground/90 whitespace-pre-wrap">{detail.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </li>
+  );
+}
 
 function StatCard({
   label,
