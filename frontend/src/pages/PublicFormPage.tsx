@@ -39,6 +39,8 @@ import {
   singleUserName,
   submitFormAnswers,
   uploadFormFile,
+  getFileSignedUrl,
+  normalizeFileAnswers,
   type FormField,
   type HubForm,
   type PayrollOption,
@@ -104,7 +106,7 @@ export default function PublicFormPage() {
     if (!form) return;
     // required check
     for (const f of visibleFields) {
-      if (f.required && !isStaticType(f.type)) {
+      if (f.required && !isStaticType(f)) {
         const v = answers[f.id];
         if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) {
           toast.error(`${f.label || "Field"} is required`);
@@ -117,7 +119,7 @@ export default function PublicFormPage() {
       // Only include answers for visible, non-static fields
       const payload: Record<string, unknown> = {};
       for (const f of visibleFields) {
-        if (isStaticType(f.type)) continue;
+        if (isStaticType(f)) continue;
         if (answers[f.id] !== undefined) payload[f.id] = answers[f.id];
       }
       await submitFormAnswers(form.id, payload);
@@ -241,8 +243,12 @@ export default function PublicFormPage() {
   );
 }
 
-export function isStaticType(t: FormField["type"]) {
-  return t === "headline" || t === "subheadline" || t === "paragraph" || t === "image";
+export function isStaticType(t: FormField | FormField["type"]) {
+  if (typeof t === "object" && t !== null) {
+    if (t.type === "image") return !!t.imageUrl;
+    return t.type === "headline" || t.type === "subheadline" || t.type === "paragraph";
+  }
+  return t === "headline" || t === "subheadline" || t === "paragraph";
 }
 
 export interface FieldRendererProps {
@@ -258,18 +264,20 @@ export interface FieldRendererProps {
 
 export function FieldRenderer({ field, value, onChange, users, formSlug, staffNameLock }: FieldRendererProps) {
   if (field.type === "image") {
-    if (!field.imageUrl) return null;
-    return (
-      <div style={{ textAlign: field.imageAlign ?? "center" }}>
-        <img
-          src={field.imageUrl}
-          alt=""
-          style={{ width: field.imageWidth ?? 240, maxWidth: "100%", display: "inline-block" }}
-        />
-      </div>
-    );
+    if (field.imageUrl) {
+      return (
+        <div style={{ textAlign: field.imageAlign ?? "center" }}>
+          <img
+            src={field.imageUrl}
+            alt=""
+            style={{ width: field.imageWidth ?? 240, maxWidth: "100%", display: "inline-block" }}
+          />
+        </div>
+      );
+    }
+    return <ImageUploadField field={field} value={value} onChange={onChange} />;
   }
-  if (isStaticType(field.type)) {
+  if (isStaticType(field)) {
     const Tag = field.type === "headline" ? "h2" : field.type === "subheadline" ? "h3" : "p";
     const style: React.CSSProperties = {
       fontSize: field.style?.fontSize,
@@ -492,42 +500,158 @@ interface FileUploadFieldProps {
 
 function FileUploadField({ field, value, onChange }: FileUploadFieldProps) {
   const [uploading, setUploading] = useState(false);
-  const current = value as UploadedFile | undefined;
+  const files = normalizeFileAnswers(value);
 
-  const handleFile = async (file: File) => {
+  const handleFiles = async (fileList: FileList | File[]) => {
+    const fileArray = Array.from(fileList);
+    if (fileArray.length === 0) return;
     setUploading(true);
     try {
-      const uploaded = await uploadFormFile(file);
-      onChange(uploaded);
+      const uploadedList: UploadedFile[] = [];
+      for (const file of fileArray) {
+        const uploaded = await uploadFormFile(file);
+        uploadedList.push(uploaded);
+      }
+      onChange([...files, ...uploadedList]);
     } catch {
-      toast.error("Could not upload file");
+      toast.error("Could not upload file(s)");
     } finally {
       setUploading(false);
     }
   };
 
+  const removeFile = (index: number) => {
+    onChange(files.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="space-y-1.5">
       <Label className="text-sm">
-        {field.label}
+        {field.label || "File upload"}
         {field.required && <span className="text-red-600 ml-0.5">*</span>}
       </Label>
       <input
         type="file"
+        multiple
         accept={field.accept || undefined}
         disabled={uploading}
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
+          if (e.target.files) {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }
         }}
         className="block w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-input file:bg-background file:text-foreground file:cursor-pointer hover:file:bg-muted"
       />
-      {uploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
-      {current && current.name && (
-        <p className="text-xs text-muted-foreground">
-          Uploaded: <span className="font-medium text-foreground">{current.name}</span>
-          {current.size ? ` (${Math.round(current.size / 1024)} KB)` : ""}
-        </p>
+      {uploading && <p className="text-xs text-muted-foreground">Uploading file(s)…</p>}
+      {files.length > 0 && (
+        <ul className="space-y-1.5 pt-1 text-xs">
+          {files.map((f, i) => (
+            <li key={`${f.path}-${i}`} className="flex items-center justify-between gap-2 p-2 rounded-md border bg-background">
+              <span className="truncate font-medium text-foreground">
+                {f.name} {f.size ? `(${Math.round(f.size / 1024)} KB)` : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                className="text-muted-foreground hover:text-red-600 shrink-0"
+                aria-label="Remove file"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ImageUploadField({ field, value, onChange }: FileUploadFieldProps) {
+  const [uploading, setUploading] = useState(false);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const files = normalizeFileAnswers(value);
+
+  useEffect(() => {
+    let active = true;
+    files.forEach((f) => {
+      if (f.path && !previewUrls[f.path]) {
+        getFileSignedUrl(f.path).then((url) => {
+          if (active && url) {
+            setPreviewUrls((prev) => ({ ...prev, [f.path]: url }));
+          }
+        });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [files]);
+
+  const handleFiles = async (fileList: FileList | File[]) => {
+    const fileArray = Array.from(fileList);
+    if (fileArray.length === 0) return;
+    setUploading(true);
+    try {
+      const uploadedList: UploadedFile[] = [];
+      for (const file of fileArray) {
+        const uploaded = await uploadFormFile(file);
+        uploadedList.push(uploaded);
+      }
+      onChange([...files, ...uploadedList]);
+    } catch {
+      toast.error("Could not upload image(s)");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    onChange(files.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-sm">
+        {field.label || "Image"}
+        {field.required && <span className="text-red-600 ml-0.5">*</span>}
+      </Label>
+      <input
+        type="file"
+        multiple
+        accept={field.accept || "image/*"}
+        disabled={uploading}
+        onChange={(e) => {
+          if (e.target.files) {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }
+        }}
+        className="block w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-input file:bg-background file:text-foreground file:cursor-pointer hover:file:bg-muted"
+      />
+      {uploading && <p className="text-xs text-muted-foreground">Uploading image(s)…</p>}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-3 pt-1">
+          {files.map((f, i) => (
+            <div key={`${f.path}-${i}`} className="relative group rounded-md border p-1 bg-background">
+              {previewUrls[f.path] ? (
+                <img src={previewUrls[f.path]} alt={f.name} className="h-20 w-20 object-cover rounded" />
+              ) : (
+                <div className="h-20 w-20 flex items-center justify-center text-xs text-muted-foreground bg-muted rounded">
+                  Image
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                aria-label="Remove image"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

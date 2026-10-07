@@ -401,8 +401,31 @@ export function isStaticText(type: FieldType): boolean {
   return STATIC_TEXT_TYPES.includes(type);
 }
 
-export function isStaticField(type: FieldType): boolean {
-  return STATIC_TYPES.includes(type);
+export function isStaticField(fieldOrType: FieldType | FormField): boolean {
+  if (typeof fieldOrType === "string") {
+    return STATIC_TEXT_TYPES.includes(fieldOrType);
+  }
+  if (fieldOrType.type === "image") {
+    return !!fieldOrType.imageUrl;
+  }
+  return STATIC_TEXT_TYPES.includes(fieldOrType.type);
+}
+
+export function isFileAnswer(v: unknown): v is UploadedFile {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    v !== null &&
+    "path" in (v as Record<string, unknown>) &&
+    "name" in (v as Record<string, unknown>)
+  );
+}
+
+export function normalizeFileAnswers(v: unknown): UploadedFile[] {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(isFileAnswer);
+  if (isFileAnswer(v)) return [v];
+  return [];
 }
 
 export function isConditionSource(type: FieldType): boolean {

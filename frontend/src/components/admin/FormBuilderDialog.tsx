@@ -373,9 +373,7 @@ function FieldEditor({
 
   const headerTitle = staticText
     ? field.content || FIELD_TYPE_LABELS[field.type]
-    : field.type === "image"
-    ? "Image"
-    : field.label;
+    : field.label || FIELD_TYPE_LABELS[field.type];
 
   return (
     <div className="rounded-lg border bg-muted/20">
@@ -433,17 +431,17 @@ function FieldEditor({
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t pt-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {!staticAny && (
+            {!staticText && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Label</Label>
                 <Input
                   value={field.label}
                   onChange={(e) => onChange({ label: e.target.value })}
-                  placeholder="Your question"
+                  placeholder={field.type === "image" ? "Image" : "Your question"}
                 />
               </div>
             )}
-            <div className={`space-y-1.5 ${staticAny ? "sm:col-span-2" : ""}`}>
+            <div className={`space-y-1.5 ${staticText ? "sm:col-span-2" : ""}`}>
               <Label className="text-xs">Type</Label>
               <Select
                 value={field.type}
@@ -673,7 +671,10 @@ function FieldEditor({
           {field.type === "image" && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Image</Label>
+                <Label className="text-xs">Static Banner Image (optional)</Label>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Upload an image here if you want to embed a fixed banner/logo on the form. Leave blank if you want respondents to upload image(s) when filling out the form.
+                </p>
                 <div className="flex items-center gap-3">
                   <input
                     type="file"
@@ -766,7 +767,7 @@ function FieldEditor({
           )}
 
 
-          {!staticAny && (
+          {!staticText && !field.imageUrl && (
             <div className="flex items-center gap-2">
               <Switch
                 checked={!!field.required}

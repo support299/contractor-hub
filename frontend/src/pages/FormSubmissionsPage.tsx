@@ -28,7 +28,9 @@ import {
   fetchFormById,
   fetchSubmissions,
   getFileSignedUrl,
+  isFileAnswer,
   isPayrollRecordsSlug,
+  normalizeFileAnswers,
   normalizeUserNames,
   selectableUsers,
   singleUserName,
@@ -46,26 +48,18 @@ type Op = "equals" | "contains" | "not_contains";
 type FieldFilter = { op: Op; value: string };
 
 function isAnswerField(f: FormField) {
+  if (f.type === "image") return !f.imageUrl;
   return (
     f.type !== "headline" &&
     f.type !== "subheadline" &&
-    f.type !== "paragraph" &&
-    f.type !== "image"
-  );
-}
-
-function isFileAnswer(v: unknown): v is { path: string; name: string; size?: number; type?: string } {
-  return (
-    !!v &&
-    typeof v === "object" &&
-    "path" in (v as Record<string, unknown>) &&
-    "name" in (v as Record<string, unknown>)
+    f.type !== "paragraph"
   );
 }
 
 function formatAnswer(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
-  if (isFileAnswer(v)) return v.name;
+  const files = normalizeFileAnswers(v);
+  if (files.length > 0) return files.map((f) => f.name).join(", ");
   if (Array.isArray(v)) return v.join(", ");
   return String(v);
 }
@@ -297,11 +291,18 @@ export default function FormSubmissionsPage() {
                     </td>
                     {answerFields.map((f) => {
                       const v = s.answers[f.id];
+                      const fileList = normalizeFileAnswers(v);
                       return (
                         <td key={f.id} className="px-4 py-3 text-muted-foreground">
                           <div className="max-w-[260px] whitespace-pre-wrap break-words">
-                            {isFileAnswer(v) ? (
-                              <FileAnswerLink file={v} />
+                            {fileList.length > 0 ? (
+                              <div className="space-y-1">
+                                {fileList.map((file, idx) => (
+                                  <div key={`${file.path}-${idx}`}>
+                                    <FileAnswerLink file={file} />
+                                  </div>
+                                ))}
+                              </div>
                             ) : (
                               formatAnswer(v)
                             )}
@@ -626,27 +627,55 @@ function EditField({ field, value, onChange, users, singleUserSelect }: EditFiel
         </div>
       );
     }
+    case "image":
     case "file_upload": {
-      const current = isFileAnswer(value) ? (value as UploadedFile) : null;
-      const handleFile = async (file: File) => {
+      const files = normalizeFileAnswers(value);
+      const handleFiles = async (fileList: FileList | File[]) => {
+        const fileArray = Array.from(fileList);
+        if (fileArray.length === 0) return;
         try {
-          const uploaded = await uploadFormFile(file);
-          onChange(uploaded);
+          const uploadedList: UploadedFile[] = [];
+          for (const file of fileArray) {
+            const uploaded = await uploadFormFile(file);
+            uploadedList.push(uploaded);
+          }
+          onChange([...files, ...uploadedList]);
         } catch {
-          toast.error("Could not upload file");
+          toast.error("Could not upload file(s)");
         }
+      };
+      const removeFile = (idx: number) => {
+        onChange(files.filter((_, i) => i !== idx));
       };
       return (
         <div className="space-y-1.5">
           {label}
-          {current && <FileAnswerLink file={current} />}
+          {files.length > 0 && (
+            <div className="space-y-1 text-xs pb-1">
+              {files.map((file, idx) => (
+                <div key={`${file.path}-${idx}`} className="flex items-center justify-between gap-2 p-1.5 border rounded bg-background">
+                  <FileAnswerLink file={file} />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="text-muted-foreground hover:text-red-600"
+                    aria-label="Remove"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <input
             type="file"
-            accept={field.accept || undefined}
+            multiple
+            accept={field.type === "image" ? (field.accept || "image/*") : (field.accept || undefined)}
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
-              e.target.value = "";
+              if (e.target.files) {
+                handleFiles(e.target.files);
+                e.target.value = "";
+              }
             }}
             className="block w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-input file:bg-background file:text-foreground file:cursor-pointer hover:file:bg-muted"
           />

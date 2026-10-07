@@ -450,7 +450,7 @@ function FormDataTable({ form }: FormDataTableProps) {
   };
 
   const formFields = useMemo(
-    () => form.fields.filter((f) => !isStaticField(f.type)),
+    () => form.fields.filter((f) => !isStaticField(f)),
     [form.fields],
   );
   const extraFields = form.extraFields ?? [];
