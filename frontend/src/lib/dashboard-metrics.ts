@@ -292,6 +292,61 @@ export function collectFeedbackForNames(
   return items;
 }
 
+export const TIP_SLUGS = ["new-tips", "new-tip", "new_tips"];
+
+export function isTipForm(form: HubForm): boolean {
+  const slug = (form.slug ?? "").trim().toLowerCase();
+  if (TIP_SLUGS.includes(slug)) return true;
+  const name = (form.name ?? "").trim().toLowerCase();
+  return /\bnew\s+tips?\b/.test(name) || name === "tip" || name === "tips";
+}
+
+const TIP_CONFIRMED_VALUES = new Set(["yes", "y", "true", "1", "confirmed", "confirm", "checked", "on"]);
+
+export type TipSummary = {
+  /** Sum of confirmed tips credited to the filtered staff (amount × matching staff). */
+  total: number;
+  /** Confirmed tip submissions that include at least one filtered staff member. */
+  count: number;
+};
+
+/**
+ * Confirmed tips for the given staff in a range. The form amount is "per technician",
+ * so each matching technician on a submission is credited the full amount.
+ */
+export function summarizeTipsForStaff(
+  staffKeys: Set<string>,
+  tipData: { form: HubForm; subs: FormSubmission[] }[],
+  range: DateRange | undefined,
+): TipSummary {
+  let total = 0;
+  let count = 0;
+  if (staffKeys.size === 0) return { total, count };
+  for (const { form, subs } of tipData) {
+    const amountId =
+      form.fields.find((f) => f.type === "number" && /tip/i.test(f.label ?? ""))?.id ??
+      form.fields.find((f) => f.type === "number" && /per\s+(technician|cleaner)|amount/i.test(f.label ?? ""))
+        ?.id ??
+      null;
+    const confirmId = findFieldIdByLabelContains(form, "confirm");
+    if (!amountId) continue;
+    for (const sub of subs) {
+      if (!inRange(sub, range)) continue;
+      if (confirmId) {
+        const raw = sub.answers[confirmId];
+        const confirmed =
+          typeof raw === "boolean" ? raw : TIP_CONFIRMED_VALUES.has(String(raw ?? "").trim().toLowerCase());
+        if (!confirmed) continue;
+      }
+      const matched = submissionStaffNames(sub, form).filter((n) => staffKeys.has(n)).length;
+      if (matched === 0) continue;
+      total += num(sub.answers[amountId]) * matched;
+      count += 1;
+    }
+  }
+  return { total, count };
+}
+
 const INCIDENT_EXCLUDE_SLUGS = new Set([
   ...REVIEW_SLUGS,
   PAYROLL_SLUG,

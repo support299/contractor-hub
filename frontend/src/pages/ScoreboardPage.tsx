@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import {
   CalendarCheck,
   Crown,
+  DollarSign,
   Lock,
   MessageSquare,
   Monitor,
@@ -37,6 +38,8 @@ import {
   dateInRange,
   formatMomDelta,
   initialsOf,
+  isTipForm,
+  summarizeTipsForStaff,
   monthRange,
   monthSelectOptions,
   parseYearMonth,
@@ -89,6 +92,7 @@ export default function ScoreboardPage() {
   const [sectors, setSectors] = useState<string[]>([]);
 
   const [reviewData, setReviewData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
+  const [tipData, setTipData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
   const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
   const [prevVisitSummary, setPrevVisitSummary] = useState<VisitSummary>({
@@ -119,12 +123,15 @@ export default function ScoreboardPage() {
     const load = async () => {
       const forms = await fetchForms();
       const reviewForms = forms.filter((x) => REVIEW_SLUGS.includes(x.slug));
-      const [rsubs, bonuses] = await Promise.all([
+      const tipForms = forms.filter(isTipForm);
+      const [rsubs, tsubs, bonuses] = await Promise.all([
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
+        Promise.all(tipForms.map((tf) => fetchSubmissions(tf.id).catch(() => [] as FormSubmission[]))),
         fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
       ]);
       if (!active) return;
       setReviewData(reviewForms.map((form, i) => ({ form, subs: rsubs[i] ?? [] })));
+      setTipData(tipForms.map((form, i) => ({ form, subs: tsubs[i] ?? [] })));
       setLockIns(bonuses);
     };
     load();
@@ -198,6 +205,16 @@ export default function ScoreboardPage() {
     () => avgStarRatingForNames(nameSet, reviewData, prevRange),
     [nameSet, reviewData, prevRange],
   );
+
+  const tips = useMemo(
+    () => summarizeTipsForStaff(nameSet, tipData, range),
+    [nameSet, tipData, range],
+  );
+  const prevTips = useMemo(
+    () => summarizeTipsForStaff(nameSet, tipData, prevRange),
+    [nameSet, tipData, prevRange],
+  );
+  const tipDelta = formatMomDelta(tips.total, prevTips.total, "money");
 
   const pendingLockIns = useMemo(() => {
     return lockIns
@@ -587,6 +604,39 @@ export default function ScoreboardPage() {
           </div>
 
           <div className="space-y-6">
+            <div className="rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-card to-card p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-green-800">Total Tips</p>
+                  <p className="text-3xl font-extrabold mt-1 tabular-nums tracking-tight leading-none text-green-700">
+                    {tips.total.toLocaleString(undefined, {
+                      style: "currency",
+                      currency: "USD",
+                      minimumFractionDigits: tips.total % 1 === 0 ? 0 : 2,
+                    })}
+                  </p>
+                </div>
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-green-100 text-green-700">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+              </div>
+              <p
+                className={cn(
+                  "text-xs mt-2 font-semibold",
+                  tipDelta.direction === "up"
+                    ? "text-emerald-600"
+                    : tipDelta.direction === "down"
+                      ? "text-red-600"
+                      : "text-muted-foreground",
+                )}
+              >
+                {tipDelta.text}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {tips.count} confirmed tip{tips.count === 1 ? "" : "s"} · From Hub
+              </p>
+            </div>
+
             <div className="rounded-xl border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
                 <Crown className="h-4 w-4 text-amber-500" />
