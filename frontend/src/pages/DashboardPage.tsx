@@ -60,8 +60,11 @@ import {
   countFeedbackByAudience,
   dateInRange,
   formatMoney,
+  formatTipTotal,
   initialsOf,
   isIncidentForm,
+  isTipForm,
+  summarizeTipsForStaff,
   type IncidentItem,
 } from "@/lib/dashboard-metrics";
 
@@ -115,6 +118,7 @@ export default function DashboardPage() {
   const [absenceForm, setAbsenceForm] = useState<HubForm | null>(null);
   const [absenceSubs, setAbsenceSubs] = useState<FormSubmission[]>([]);
   const [incidentData, setIncidentData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
+  const [tipData, setTipData] = useState<{ form: HubForm; subs: FormSubmission[] }[]>([]);
   const [lockIns, setLockIns] = useState<LockInBonusRow[]>([]);
   const [visitSummary, setVisitSummary] = useState<VisitSummary>({ total: 0, byTechnician: {} });
   const [googleFiveStarCount, setGoogleFiveStarCount] = useState(0);
@@ -129,12 +133,13 @@ export default function DashboardPage() {
       const absence = forms.find((x) => x.slug === ABSENCE_SLUG) ?? null;
       const reviewForms = forms.filter((x) => REVIEW_SLUGS.includes(x.slug));
       const incidentForms = forms.filter((x) => isIncidentForm(x));
+      const tipForms = forms.filter(isTipForm);
       if (!active) return;
       setPayrollForm(f);
       setBonusForm(b);
       setEfficiencyForm(e);
       setAbsenceForm(absence);
-      const [subs, bsubs, rsubs, esubs, asubs, bonuses, isubs] = await Promise.all([
+      const [subs, bsubs, rsubs, esubs, asubs, bonuses, isubs, tsubs] = await Promise.all([
         f ? fetchSubmissions(f.id) : Promise.resolve([]),
         b ? fetchSubmissions(b.id) : Promise.resolve([]),
         Promise.all(reviewForms.map((rf) => fetchSubmissions(rf.id))),
@@ -142,6 +147,7 @@ export default function DashboardPage() {
         absence ? fetchSubmissions(absence.id).catch(() => []) : Promise.resolve([]),
         fetchLockInBonuses().catch(() => [] as LockInBonusRow[]),
         Promise.all(incidentForms.map((form) => fetchSubmissions(form.id).catch(() => []))),
+        Promise.all(tipForms.map((form) => fetchSubmissions(form.id).catch(() => []))),
       ]);
       if (!active) return;
       setPayrollSubs(subs);
@@ -151,6 +157,7 @@ export default function DashboardPage() {
       setAbsenceSubs(asubs);
       setLockIns(bonuses);
       setIncidentData(incidentForms.map((form, i) => ({ form, subs: isubs[i] ?? [] })));
+      setTipData(tipForms.map((form, i) => ({ form, subs: tsubs[i] ?? [] })));
     })();
     return () => {
       active = false;
@@ -203,6 +210,11 @@ export default function DashboardPage() {
     [selected, bonusSubs, bonusForm, range],
   );
   const totalBonusesLabel = formatMoney(totalBonuses);
+
+  const tips = useMemo(
+    () => summarizeTipsForStaff(new Set(selected ? [selected.name] : []), tipData, range),
+    [selected, tipData, range],
+  );
 
   const visitCount = selected ? (visitSummary.byTechnician[selected.id] ?? 0) : 0;
 
@@ -365,7 +377,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard
             label="Total Earnings"
             value={totalEarningsLabel}
@@ -377,6 +389,12 @@ export default function DashboardPage() {
             value={totalBonusesLabel}
             sub={`For ${rangeLabel}`}
             icon={<Award className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatCard
+            label="Total Tips"
+            value={formatTipTotal(tips.total)}
+            sub={`${tips.count} confirmed tip${tips.count === 1 ? "" : "s"}`}
+            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard
             label="Total Visits"
