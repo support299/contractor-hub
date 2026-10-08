@@ -60,7 +60,6 @@ import {
   countFeedbackByAudience,
   dateInRange,
   formatMoney,
-  formatTipTotal,
   initialsOf,
   isIncidentForm,
   isTipForm,
@@ -392,8 +391,8 @@ export default function DashboardPage() {
           />
           <StatCard
             label="Total Tips"
-            value={formatTipTotal(tips.total)}
-            sub={`${tips.count} confirmed tip${tips.count === 1 ? "" : "s"}`}
+            value={formatMoney(tips.total)}
+            sub={`For ${rangeLabel}`}
             icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
           />
           <StatCard

@@ -38,7 +38,7 @@ import {
   dateInRange,
   formatMomDelta,
   initialsOf,
-  formatTipTotal,
+  formatMoney,
   isTipForm,
   summarizeTipsForStaff,
   monthRange,
@@ -215,7 +215,7 @@ export default function ScoreboardPage() {
     () => summarizeTipsForStaff(nameSet, tipData, prevRange),
     [nameSet, tipData, prevRange],
   );
-  const tipDelta = formatMomDelta(tips.total, prevTips.total, "number");
+  const tipDelta = formatMomDelta(tips.total, prevTips.total, "money");
 
   const pendingLockIns = useMemo(() => {
     return lockIns
@@ -610,7 +610,7 @@ export default function ScoreboardPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-green-800">Total Tips</p>
                   <p className="text-3xl font-extrabold mt-1 tabular-nums tracking-tight leading-none text-green-700">
-                    {formatTipTotal(tips.total)}
+                    {formatMoney(tips.total)}
                   </p>
                 </div>
                 <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 bg-green-100 text-green-700">

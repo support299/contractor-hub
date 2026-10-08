@@ -303,14 +303,6 @@ export function isTipForm(form: HubForm): boolean {
 
 const TIP_CONFIRMED_VALUES = new Set(["yes", "y", "true", "1", "confirmed", "confirm", "checked", "on"]);
 
-/** Tip totals are shown as plain numbers, without a currency symbol. */
-export function formatTipTotal(n: number): string {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: n % 1 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 export type TipSummary = {
   /** Sum of confirmed tips credited to the filtered staff (amount × matching staff). */
   total: number;
