@@ -1951,6 +1951,67 @@ class GoogleReviewSummaryApiTests(TestCase):
         self.assertEqual(summary.status_code, 200)
         self.assertEqual(summary.data["five_star"], 1)
 
+    def _tag(self, ghl_id, cleaner_ids):
+        return self.admin_client.patch(
+            f"/api/reviews/google/{ghl_id}/cleaners/",
+            {"cleaner_ids": [str(i) for i in cleaner_ids]},
+            format="json",
+        )
+
+    def test_tagging_five_star_review_notifies_cleaner_once(self):
+        from hub.models import GhlGoogleReview, HubNotification
+
+        GhlGoogleReview.objects.create(
+            ghl_id="notify-5", reviewer_name="Sam", star_rating=5, source=247
+        )
+        self.assertEqual(self._tag("notify-5", [self.employee.id]).status_code, 200)
+        qs = HubNotification.objects.filter(type="google_review_five_star")
+        self.assertEqual(qs.count(), 1)
+        note = qs.get()
+        self.assertEqual(note.recipient_id, self.employee.id)
+        self.assertIn("Sam", note.body)
+        self.assertEqual(note.payload["review_id"], "notify-5")
+
+        # Re-saving the same set, or removing and re-adding, never re-notifies.
+        self._tag("notify-5", [self.employee.id])
+        self._tag("notify-5", [])
+        self._tag("notify-5", [self.employee.id])
+        self.assertEqual(qs.count(), 1)
+
+    def test_only_newly_added_cleaners_are_notified(self):
+        from hub.models import GhlGoogleReview, HubNotification, HubUser
+
+        other = HubUser.objects.create(
+            name="Other", email="grev-new@test.local", role=HubUser.Role.CONTRACTOR
+        )
+        GhlGoogleReview.objects.create(ghl_id="notify-add", star_rating=5, source=247)
+        self._tag("notify-add", [self.employee.id])
+        self._tag("notify-add", [self.employee.id, other.id])
+        recipients = sorted(
+            HubNotification.objects.filter(type="google_review_five_star").values_list(
+                "recipient__name", flat=True
+            )
+        )
+        self.assertEqual(recipients, ["Other", "Staff"])
+
+    def test_tagging_non_five_star_review_does_not_notify(self):
+        from hub.models import GhlGoogleReview, HubNotification
+
+        GhlGoogleReview.objects.create(ghl_id="notify-4", star_rating=4, source=247)
+        self.assertEqual(self._tag("notify-4", [self.employee.id]).status_code, 200)
+        self.assertFalse(
+            HubNotification.objects.filter(type="google_review_five_star").exists()
+        )
+
+    def test_display_users_are_never_notified(self):
+        from hub.models import GhlGoogleReview, HubNotification
+
+        GhlGoogleReview.objects.create(ghl_id="notify-tv", star_rating=5, source=247)
+        self._tag("notify-tv", [self.display.id])
+        self.assertFalse(
+            HubNotification.objects.filter(type="google_review_five_star").exists()
+        )
+
 
 class NotificationEmailApiTests(TestCase):
     def setUp(self):

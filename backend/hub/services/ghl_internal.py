@@ -366,6 +366,12 @@ def set_review_cleaners(ghl_id: str, cleaner_ids) -> GhlGoogleReview | None:
             ids.append(uuid.UUID(str(raw)))
         except (TypeError, ValueError):
             continue
-    users = HubUser.objects.filter(id__in=ids).exclude(role=HubUser.Role.DISPLAY)
+    users = list(HubUser.objects.filter(id__in=ids).exclude(role=HubUser.Role.DISPLAY))
+    previous = set(review.cleaners.values_list("id", flat=True))
     review.cleaners.set(users)
+    added = [u for u in users if u.id not in previous]
+    if added:
+        from hub.services.google_review_notify import notify_cleaners_tagged
+
+        notify_cleaners_tagged(review, added)
     return GhlGoogleReview.objects.prefetch_related("cleaners").get(pk=review.pk)
