@@ -227,6 +227,9 @@ HUB_PUBLIC_URL = os.getenv("HUB_PUBLIC_URL", "https://hub.cleanonthego.com").rst
 # GHL internal Reputation (Firebase session tokens; seed via env or Django admin)
 GHL_FIREBASE_API_KEY = os.getenv("GHL_FIREBASE_API_KEY", "")
 GHL_FIREBASE_REFRESH_TOKEN = os.getenv("GHL_FIREBASE_REFRESH_TOKEN", "")
+# Shared secret service-creator sends as X-Internal-Secret when pushing work hours.
+# Empty disables the endpoint (it answers 503).
+HUB_INTERNAL_SECRET = os.getenv("HUB_INTERNAL_SECRET", "")
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "5"))
 OTP_REQUEST_COOLDOWN_SECONDS = int(os.getenv("OTP_REQUEST_COOLDOWN_SECONDS", "60"))
 

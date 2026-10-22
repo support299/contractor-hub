@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from . import analytics_views, google_review_views, lock_in_views, views
+from . import analytics_views, google_review_views, lock_in_views, views, work_hours_views
 
 router = DefaultRouter()
 router.register(r"users", views.HubUserViewSet, basename="hub-users")
@@ -93,6 +93,11 @@ urlpatterns = [
         "internal/lock-in/bonuses/<uuid:pk>/sms/",
         lock_in_views.InternalBonusSmsFlagsView.as_view(),
         name="internal-lock-in-bonus-sms",
+    ),
+    path(
+        "internal/work-hours/upsert/",
+        work_hours_views.InternalWorkHoursUpsertView.as_view(),
+        name="internal-work-hours-upsert",
     ),
     path(
         "internal/lock-in/users/",

@@ -610,3 +610,40 @@ class GhlGoogleReview(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.reviewer_name} ({self.star_rating})"
+
+
+class HubWorkHours(TimeStampedModel):
+    """Daily hours per employee (synced from Jobber timesheets or entered by hand).
+
+    Overtime is not stored: it is derived per ISO week (over 40h) when exported.
+    """
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        JOBBER = "jobber", "Jobber"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        HubUser, on_delete=models.CASCADE, related_name="work_hours"
+    )
+    work_date = models.DateField(db_index=True)
+    regular_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0")
+    )
+    drive_time_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0")
+    )
+    source = models.CharField(
+        max_length=16, choices=Source.choices, default=Source.MANUAL
+    )
+
+    class Meta:
+        ordering = ["-work_date", "employee__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["employee", "work_date"], name="uniq_work_hours_employee_day"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee_id} {self.work_date}"

@@ -638,6 +638,11 @@ def build_analytics_payload(
     performance = build_performance_proxy(lock_in, leave)
     kpis = build_computed_kpis(employees, leave, lock_in, workflows)
 
+    # Imported here: analytics_extra imports helpers from this module.
+    from hub.services.analytics_extra import build_extra_sections
+
+    extra = build_extra_sections(from_date, to_date)
+
     return {
         "meta": {
             "generated_at": timezone.now().isoformat(),
@@ -679,4 +684,5 @@ def build_analytics_payload(
         ),
         "custom_kpis": kpis,
         "internal_workflows": workflows,
+        **extra,
     }
