@@ -17,6 +17,7 @@ ADDITIONS = {
     "new-complaint": [
         ("Status", "dropdown", STATUS_OPTIONS),
         ("Resolved date", "date", None),
+        ("Team Leader", "users", None),
     ],
     "how-are-we-doing": [("Visit date", "date", None), ("Email", "single_line", None)],
     "review-your-recent-experience": [
@@ -32,7 +33,10 @@ def _new_id() -> str:
 
 
 class Command(BaseCommand):
-    help = "Add Status/Resolved date (complaints), Visit date and Email (reviews), Email (cancellations)."
+    help = (
+        "Add Status/Resolved date/Team Leader (complaints), Visit date and Email (reviews), "
+        "Email (cancellations)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(

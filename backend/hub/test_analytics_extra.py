@@ -7,6 +7,7 @@ from hub.models import HubForm, HubFormSubmission, HubUser, HubWorkHours
 from hub.services.analytics_extra import (
     build_cancellations_section,
     build_complaints_section,
+    build_late_arrivals_section,
     build_reviews_section,
     build_work_hours_section,
 )
@@ -87,6 +88,63 @@ class ExtraSectionsTests(TestCase):
         self.assertEqual(recs["A"]["team"][0]["name"], "Ana")
         self.assertEqual(recs["B"]["status"], "in_progress")
         self.assertEqual(recs["B"]["resolved_date"], "2026-10-05")
+
+    def test_complaint_team_leader(self):
+        form = _form(
+            "new-complaint",
+            [
+                {"id": "f_co7nnoro", "type": "single_line", "label": "Client Name"},
+                {"id": "f_lead", "type": "users", "label": "Team Leader"},
+            ],
+        )
+        HubFormSubmission.objects.create(
+            form=form, answers={"f_co7nnoro": "A", "f_lead": [str(self.ana.id)]}
+        )
+        HubFormSubmission.objects.create(form=form, answers={"f_co7nnoro": "B"})
+        recs = {r["client_name"]: r for r in build_complaints_section(None, None)["records"]}
+        self.assertEqual(recs["A"]["team_leader"]["name"], "Ana")
+        self.assertEqual(recs["A"]["team_leader"]["jobber_user_id"], "J-ANA")
+        self.assertIsNone(recs["B"]["team_leader"])
+
+    def test_late_arrivals_only_late_type_filtered_by_late_date(self):
+        form = _form(
+            "new-absence",
+            [
+                {"id": "f_rhfm17h9", "type": "users", "label": "Technician"},
+                {"id": "f_4a12y9ll", "type": "date", "label": "Date"},
+                {"id": "f_vxzb7cc6", "type": "dropdown", "label": "Type"},
+                {"id": "f_x61sk1qb", "type": "multi_line", "label": "Comment"},
+            ],
+        )
+        for token, day, kind, comment in (
+            ([str(self.ana.id)], "2026-10-05", "Late", "Traffic"),
+            (["Ana", "Ben"], "2026-10-20", "Late", ""),
+            ([str(self.ben.id)], "2026-10-06", "Sick", ""),
+            ([str(self.ben.id)], "2026-10-07", "Absent", ""),
+        ):
+            HubFormSubmission.objects.create(
+                form=form,
+                answers={
+                    "f_rhfm17h9": token,
+                    "f_4a12y9ll": day,
+                    "f_vxzb7cc6": kind,
+                    "f_x61sk1qb": comment,
+                },
+            )
+
+        out = build_late_arrivals_section(None, None)
+        self.assertEqual(out["summary"]["total"], 3)
+        self.assertEqual(out["summary"]["by_employee"], {"Ana": 2, "Ben": 1})
+        self.assertEqual(len({r["id"] for r in out["records"]}), 3)
+
+        # The period is the late date, even though everything was logged today.
+        october = build_late_arrivals_section(date(2026, 10, 1), date(2026, 10, 10))
+        self.assertEqual(len(october["records"]), 1)
+        rec = october["records"][0]
+        self.assertEqual(
+            (rec["date"], rec["employee_name"], rec["jobber_user_id"], rec["comment"]),
+            ("2026-10-05", "Ana", "J-ANA", "Traffic"),
+        )
 
     def test_cancellation_sub_reasons_merged(self):
         form = _form(

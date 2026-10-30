@@ -655,7 +655,7 @@ def build_analytics_payload(
                     "Not tracked as clock-in/out. Use leave absences + visits as proxies."
                 ),
                 "late_arrivals": (
-                    "No late-clock model. See leave.late_related_leave if form types include Late."
+                    "From the New Absence form (type Late). Counts only what the team logs."
                 ),
                 "internal_ratings_feedback": "Not implemented in this app yet.",
                 "custom_kpis": "Computed KPIs from existing data; no custom KPI builder yet.",
@@ -670,12 +670,6 @@ def build_analytics_payload(
             "This app does not store daily attendance / clock-in records. "
             "Dashboard can use leave.absences and lock_in_bonuses.visits as proxies.",
         ),
-        "late_arrivals": {
-            "available": False,
-            "domain": "late_arrivals",
-            "reason": "No late-arrival clock data is stored.",
-            "proxy_from_leave": leave.get("late_related_leave"),
-        },
         "lock_in_bonuses": lock_in,
         "employee_performance": performance,
         "internal_ratings_feedback": _unavailable(

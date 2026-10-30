@@ -1,4 +1,5 @@
-"""Insights sections built from Hub forms: reviews, complaints, cancellations, work hours.
+"""Insights sections built from Hub forms: reviews, complaints, cancellations, work hours,
+late arrivals.
 
 Form answers are JSON keyed by field id. Each field is located by its production id
 first, then by label, so a rebuilt form still maps as long as the label matches.
@@ -30,11 +31,14 @@ RATING_ONLY_SLUGS = ("how-are-we-doing", "comment-tu-nous-trouve")
 DETAILED_REVIEW_SLUGS = ("review-your-recent-experience", "evaluez-votre-experience")
 COMPLAINT_SLUG = "new-complaint"
 CANCELLATION_SLUG = "service-cancellation-form"
+ABSENCE_SLUG = "new-absence"
 
 _EMAIL = re.compile(r"e-?mail|courriel", re.I)
 _VISIT_DATE = re.compile(r"visit date|date of (the )?(visit|service)|date de (la )?visite", re.I)
 _STATUS = re.compile(r"^\s*status\s*$", re.I)
 _RESOLVED_DATE = re.compile(r"resolved\s*date|date resolved|resolution date", re.I)
+_TEAM_LEADER = re.compile(r"^\s*team\s*leader\s*$", re.I)
+_LATE_TYPE = re.compile(r"\blate\b", re.I)
 
 
 class _Form:
@@ -263,6 +267,7 @@ def build_complaints_section(from_date: date | None, to_date: date | None) -> di
         status = form.text(a, None, _STATUS).lower().replace(" ", "_")
         if not status:
             status = "resolved" if resolved_date else "open"
+        team_leaders = staff.resolve(form.raw(a, None, _TEAM_LEADER))
         records.append(
             {
                 "id": str(sub.id),
@@ -272,6 +277,7 @@ def build_complaints_section(from_date: date | None, to_date: date | None) -> di
                 "client_jobber_id": clients.jobber_id(name),
                 "incident_date": form.date(a, "f_ucnhpg8i"),
                 "team": staff.resolve(form.raw(a, "f_bd42zhds")),
+                "team_leader": team_leaders[0] if team_leaders else None,
                 "responsible": staff.resolve(form.raw(a, "f_3cqe7bnp")),
                 "type": form.text(a, "f_z1mp4e8g"),
                 "what_happened": form.text(a, "f_q82gzpdl"),
@@ -407,10 +413,57 @@ def build_work_hours_section(from_date: date | None, to_date: date | None) -> di
     }
 
 
+def build_late_arrivals_section(from_date: date | None, to_date: date | None) -> dict:
+    """One record per employee per late arrival logged on the New Absence form.
+
+    The period filter uses the date of the late arrival, not when it was logged. A
+    submission with no date falls back to the day it was submitted.
+    """
+    staff = _Staff()
+    records: list[dict] = []
+
+    for sub in _submissions((ABSENCE_SLUG,), None, None):
+        form, a = _Form(sub.form), sub.answers or {}
+        if not _LATE_TYPE.search(form.text(a, "f_vxzb7cc6")):
+            continue
+        late_on = form.date(a, "f_4a12y9ll") or sub.created_at.date().isoformat()
+        day = date.fromisoformat(late_on)
+        if (from_date and day < from_date) or (to_date and day > to_date):
+            continue
+        employees = staff.resolve(form.raw(a, "f_rhfm17h9")) or [
+            {"id": None, "name": "", "jobber_user_id": None}
+        ]
+        for employee in employees:
+            records.append(
+                {
+                    "id": f"{sub.id}:{employee['id'] or employee['name']}",
+                    "submission_id": str(sub.id),
+                    "date": late_on,
+                    "employee_id": employee["id"],
+                    "employee_name": employee["name"],
+                    "jobber_user_id": employee["jobber_user_id"],
+                    "comment": form.text(a, "f_x61sk1qb"),
+                    "submitted_at": _iso(sub.created_at),
+                }
+            )
+
+    records.sort(key=lambda r: (r["date"], r["employee_name"]), reverse=True)
+    return {
+        "available": True,
+        "source": "New Absence form, type Late",
+        "summary": {
+            "total": len(records),
+            "by_employee": _count_by(records, "employee_name"),
+        },
+        "records": records,
+    }
+
+
 def build_extra_sections(from_date: date | None, to_date: date | None) -> dict[str, Any]:
     return {
         "reviews": build_reviews_section(from_date, to_date),
         "complaints": build_complaints_section(from_date, to_date),
         "service_cancellations": build_cancellations_section(from_date, to_date),
         "work_hours": build_work_hours_section(from_date, to_date),
+        "late_arrivals": build_late_arrivals_section(from_date, to_date),
     }
