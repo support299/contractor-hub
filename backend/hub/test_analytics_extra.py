@@ -185,9 +185,15 @@ class ExtraSectionsTests(TestCase):
         self.assertEqual(len(cut["records"]), 1)
         self.assertEqual(cut["records"][0]["overtime_hours"], "10.00")
 
-    def test_general_hours_follow_team_leader_rule(self):
-        lead = HubUser.objects.create(name="Lea", position="Team Leader")
-        for user in (self.ben, lead):
+    def test_general_hours_are_drive_time_only_for_employee_cleaners(self):
+        people = [
+            HubUser.objects.create(name="Tech", position="Cleaning Technician"),
+            HubUser.objects.create(name="Lead", position="Team Leader"),
+            HubUser.objects.create(name="Boss", position="Production Manager", role="admin"),
+            HubUser.objects.create(name="Sub", position="Cleaning Technician", role="contractor"),
+            HubUser.objects.create(name="Blank"),
+        ]
+        for user in people:
             HubWorkHours.objects.create(
                 employee=user,
                 work_date=date(2026, 10, 5),
@@ -196,17 +202,20 @@ class ExtraSectionsTests(TestCase):
                 general_hours=Decimal("1.25"),
             )
         by_name = {r["employee_name"]: r for r in build_work_hours_section(None, None)["records"]}
-        ben, lea = by_name["Ben"], by_name["Lea"]
         self.assertEqual(
-            (ben["regular_hours"], ben["drive_time_hours"], ben["general_counted_as"]),
-            ("6.00", "1.75", "drive_time"),
+            (by_name["Tech"]["regular_hours"], by_name["Tech"]["drive_time_hours"]),
+            ("6.00", "1.75"),
         )
-        self.assertEqual(
-            (lea["regular_hours"], lea["drive_time_hours"], lea["general_counted_as"]),
-            ("7.25", "0.50", "regular"),
-        )
-        self.assertEqual((ben["hours_worked"], lea["hours_worked"]), ("7.75", "7.75"))
-        self.assertEqual(ben["general_hours"], "1.25")
+        self.assertEqual(by_name["Tech"]["general_counted_as"], "drive_time")
+        for name in ("Lead", "Boss", "Sub", "Blank"):
+            rec = by_name[name]
+            self.assertEqual(
+                (rec["regular_hours"], rec["drive_time_hours"], rec["general_counted_as"]),
+                ("7.25", "0.50", "regular"),
+                name,
+            )
+        self.assertEqual({r["hours_worked"] for r in by_name.values()}, {"7.75"})
+        self.assertEqual(by_name["Tech"]["general_hours"], "1.25")
 
 
 from django.test import override_settings
