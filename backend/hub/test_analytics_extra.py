@@ -185,6 +185,29 @@ class ExtraSectionsTests(TestCase):
         self.assertEqual(len(cut["records"]), 1)
         self.assertEqual(cut["records"][0]["overtime_hours"], "10.00")
 
+    def test_general_hours_follow_team_leader_rule(self):
+        lead = HubUser.objects.create(name="Lea", position="Team Leader")
+        for user in (self.ben, lead):
+            HubWorkHours.objects.create(
+                employee=user,
+                work_date=date(2026, 10, 5),
+                regular_hours=Decimal("6"),
+                drive_time_hours=Decimal("0.5"),
+                general_hours=Decimal("1.25"),
+            )
+        by_name = {r["employee_name"]: r for r in build_work_hours_section(None, None)["records"]}
+        ben, lea = by_name["Ben"], by_name["Lea"]
+        self.assertEqual(
+            (ben["regular_hours"], ben["drive_time_hours"], ben["general_counted_as"]),
+            ("6.00", "1.75", "drive_time"),
+        )
+        self.assertEqual(
+            (lea["regular_hours"], lea["drive_time_hours"], lea["general_counted_as"]),
+            ("7.25", "0.50", "regular"),
+        )
+        self.assertEqual((ben["hours_worked"], lea["hours_worked"]), ("7.75", "7.75"))
+        self.assertEqual(ben["general_hours"], "1.25")
+
 
 from django.test import override_settings
 from rest_framework.test import APIClient
@@ -215,25 +238,38 @@ class WorkHoursUpsertTests(TestCase):
         r = self._post(
             {
                 "entries": [
-                    {**day, "regular_hours": "7.50", "drive_time_hours": "1.25"},
+                    {
+                        **day,
+                        "regular_hours": "7.50",
+                        "drive_time_hours": "1.25",
+                        "general_hours": "0.75",
+                    },
                     {"jobber_user_id": "J-NOBODY", "date": "2026-10-05", "regular_hours": "1"},
                     {**day, "date": "bad", "regular_hours": "1"},
                     {**day, "regular_hours": "99"},
+                    {**day, "regular_hours": "1", "general_hours": "-1"},
                 ]
             }
         )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["saved"], 1)
         self.assertEqual(r.json()["skipped_ids"], ["J-NOBODY"])
-        self.assertEqual(len(r.json()["invalid"]), 2)
+        self.assertEqual(len(r.json()["invalid"]), 3)
         row = HubWorkHours.objects.get()
-        self.assertEqual((row.regular_hours, row.drive_time_hours), (Decimal("7.50"), Decimal("1.25")))
+        self.assertEqual(
+            (row.regular_hours, row.drive_time_hours, row.general_hours),
+            (Decimal("7.50"), Decimal("1.25"), Decimal("0.75")),
+        )
         self.assertEqual(row.source, "jobber")
 
-        # Re-sending zeros overwrites the day (entry deleted in Jobber).
+        # Re-sending zeros overwrites the day (entry deleted in Jobber). A sender that
+        # predates general_hours leaves it out, which also resets it to 0.
         self._post({"entries": [{**day, "regular_hours": "0.00", "drive_time_hours": "0.00"}]})
         row.refresh_from_db()
-        self.assertEqual((row.regular_hours, row.drive_time_hours), (Decimal("0"), Decimal("0")))
+        self.assertEqual(
+            (row.regular_hours, row.drive_time_hours, row.general_hours),
+            (Decimal("0"), Decimal("0"), Decimal("0")),
+        )
         self.assertEqual(HubWorkHours.objects.count(), 1)
 
     def test_entries_must_be_a_list(self):

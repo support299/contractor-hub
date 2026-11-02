@@ -25,6 +25,7 @@ from hub.models import (
 from hub.services.analytics import _day_bounds, _dec, _iso
 
 OVERTIME_THRESHOLD_HOURS = Decimal("40")
+TEAM_LEADER_POSITION = "team leader"
 
 # Review forms: English and French variants share field ids.
 RATING_ONLY_SLUGS = ("how-are-we-doing", "comment-tu-nous-trouve")
@@ -359,9 +360,11 @@ def _week_start(d: date) -> date:
 def build_work_hours_section(from_date: date | None, to_date: date | None) -> dict:
     """One record per employee per day.
 
-    hours_worked is regular + drive time. Overtime is whatever pushes an employee's
-    ISO week (Mon–Sun) past 40 hours, attributed to the day it was crossed. Weeks are
-    read whole, so a `from`/`to` that cuts a week still gets the right overtime.
+    hours_worked is regular + drive time. General-timer time counts as regular for
+    team leaders and as drive time for everyone else (Peter's rule), based on the
+    employee's current position. Overtime is whatever pushes an employee's ISO week
+    (Mon–Sun) past 40 hours, attributed to the day it was crossed. Weeks are read
+    whole, so a `from`/`to` that cuts a week still gets the right overtime.
     """
     qs = HubWorkHours.objects.select_related("employee")
     if from_date:
@@ -372,7 +375,11 @@ def build_work_hours_section(from_date: date | None, to_date: date | None) -> di
     cumulative: dict[tuple, Decimal] = defaultdict(Decimal)
     records: list[dict] = []
     for row in qs.order_by("employee_id", "work_date"):
-        total = (row.regular_hours or Decimal("0")) + (row.drive_time_hours or Decimal("0"))
+        general = row.general_hours or Decimal("0")
+        is_leader = (row.employee.position or "").strip().lower() == TEAM_LEADER_POSITION
+        regular = (row.regular_hours or Decimal("0")) + (general if is_leader else Decimal("0"))
+        drive = (row.drive_time_hours or Decimal("0")) + (Decimal("0") if is_leader else general)
+        total = regular + drive
         key = (row.employee_id, _week_start(row.work_date))
         before = cumulative[key]
         cumulative[key] = before + total
@@ -389,8 +396,10 @@ def build_work_hours_section(from_date: date | None, to_date: date | None) -> di
                 "employee_name": row.employee.name,
                 "jobber_user_id": row.employee.jobber_id or None,
                 "hours_worked": _hours(total),
-                "regular_hours": _hours(row.regular_hours),
-                "drive_time_hours": _hours(row.drive_time_hours),
+                "regular_hours": _hours(regular),
+                "drive_time_hours": _hours(drive),
+                "general_hours": _hours(general),
+                "general_counted_as": "regular" if is_leader else "drive_time",
                 "overtime_hours": _hours(overtime),
                 "source": row.source,
             }
@@ -403,6 +412,10 @@ def build_work_hours_section(from_date: date | None, to_date: date | None) -> di
     return {
         "available": True,
         "overtime_rule": f"Hours over {OVERTIME_THRESHOLD_HOURS} per ISO week (Mon–Sun), regular + drive time.",
+        "general_rule": (
+            "Jobber General timer (no job linked): regular time for team leaders, "
+            "drive time for everyone else. Already included in regular_hours / drive_time_hours."
+        ),
         "summary": {
             "records": len(records),
             "hours_worked": _hours(_sum("hours_worked")),

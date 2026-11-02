@@ -40,7 +40,9 @@ class InternalWorkHoursUpsertView(APIView):
     Header: X-Internal-Secret: <HUB_INTERNAL_SECRET>
 
     Body: {"entries": [{"jobber_user_id", "date", "regular_hours",
-                        "drive_time_hours", "source"}]}
+                        "drive_time_hours", "general_hours", "source"}]}
+
+    general_hours is optional (0 when missing) and is not part of regular_hours.
 
     Each employee-day is overwritten with what is sent, zeros included (a day deleted
     in Jobber is re-sent as 0.00). Unknown Jobber user ids are reported, not fatal.
@@ -91,6 +93,7 @@ class InternalWorkHoursUpsertView(APIView):
                     work_date = date.fromisoformat(str(entry.get("date") or "").strip()[:10])
                     regular = _hours(entry.get("regular_hours"))
                     drive = _hours(entry.get("drive_time_hours"))
+                    general = _hours(entry.get("general_hours"))
                 except ValueError as exc:
                     invalid.append({"index": index, "error": str(exc)})
                     continue
@@ -105,6 +108,7 @@ class InternalWorkHoursUpsertView(APIView):
                     defaults={
                         "regular_hours": regular,
                         "drive_time_hours": drive,
+                        "general_hours": general,
                         "source": HubWorkHours.Source.JOBBER,
                     },
                 )

@@ -633,6 +633,11 @@ class HubWorkHours(TimeStampedModel):
     drive_time_hours = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal("0")
     )
+    # Jobber "General" timer with no job linked. Stored raw: the export counts it as
+    # regular time for team leaders and as drive time for everyone else.
+    general_hours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("0")
+    )
     source = models.CharField(
         max_length=16, choices=Source.choices, default=Source.MANUAL
     )
