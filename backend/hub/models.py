@@ -634,7 +634,7 @@ class HubWorkHours(TimeStampedModel):
         max_digits=6, decimal_places=2, default=Decimal("0")
     )
     # Jobber "General" timer with no job linked. Stored raw: the export counts it as
-    # regular time for team leaders and as drive time for everyone else.
+    # drive time for employee cleaners and as regular time for everyone else.
     general_hours = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal("0")
     )
@@ -652,3 +652,56 @@ class HubWorkHours(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.employee_id} {self.work_date}"
+
+
+class HubPayVisit(TimeStampedModel):
+    """A Jobber visit with its billed amount, pushed nightly by service-creator for pay.
+
+    Kept apart from HubVisit (lock-in), which other features count. Amounts come from
+    the invoice when there is one (see amount_rule). The raw Jobber user ids are kept so
+    the headcount used for pay includes people the Hub doesn't know; assignees holds
+    the ones it does.
+    """
+
+    class AmountRule(models.TextChoices):
+        INVOICE = "invoice", "Invoice"
+        INVOICE_SHARE = "invoice_share", "Share of invoice"
+        ESTIMATE = "estimate", "Estimate"
+        JOB_PRICE = "job_price", "Job price"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    jobber_visit_id = models.CharField(max_length=128, unique=True)
+    jobber_job_id = models.CharField(max_length=128, blank=True, default="")
+    job_number = models.CharField(max_length=32, blank=True, default="")
+    job_title = models.CharField(max_length=255, blank=True, default="")
+    client_jobber_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    client_name = models.CharField(max_length=255, blank=True, default="")
+    visit_date = models.DateField(db_index=True)
+    status = models.CharField(max_length=16)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    assigned_user_ids = models.JSONField(default=list, blank=True)
+    assignees = models.ManyToManyField(HubUser, blank=True, related_name="pay_visits")
+    visit_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    discount_share = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    tip_share = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    line_items_total = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    invoice_id = models.CharField(max_length=128, blank=True, default="")
+    invoice_subtotal = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    invoice_discount = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    invoice_tips = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    amount_rule = models.CharField(max_length=16, choices=AmountRule.choices)
+    amount_is_estimate = models.BooleanField(default=False)
+    amount_needs_review = models.BooleanField(default=False)
+    internal = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-visit_date", "client_name"]
+
+    def __str__(self) -> str:
+        return f"{self.jobber_visit_id} {self.visit_date}"
