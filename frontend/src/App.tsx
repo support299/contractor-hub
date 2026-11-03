@@ -13,6 +13,7 @@ import TvLayout from "@/pages/TvLayout";
 import DashboardPage from "@/pages/DashboardPage";
 import ScoreboardPage from "@/pages/ScoreboardPage";
 import PayrollsPage from "@/pages/PayrollsPage";
+import ContractorPayPage from "@/pages/ContractorPayPage";
 import CalendarPage from "@/pages/CalendarPage";
 import ResourcesPage from "@/pages/ResourcesPage";
 import DataPage from "@/pages/DataPage";
@@ -58,6 +59,7 @@ export default function App() {
                 <Route element={<RequireAdmin />}>
                   <Route path="quick-entry" element={<QuickEntryPage />} />
                   <Route path="scoreboard" element={<ScoreboardPage />} />
+                  <Route path="contractor-pay" element={<ContractorPayPage />} />
                   <Route path="data" element={<DataPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="forms" element={<FormsPage />} />

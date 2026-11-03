@@ -33,6 +33,7 @@ export default function AdminLayout() {
     ...(admin ? [{ to: "/admin/quick-entry", label: "Quick Entry" }] : []),
     ...(admin ? [{ to: "/admin/scoreboard", label: "Scoreboard" }] : []),
     { to: "/admin/payrolls", label: "Payrolls" },
+    ...(admin ? [{ to: "/admin/contractor-pay", label: "Contractor Pay" }] : []),
     { to: "/admin/calendar", label: "Calendar" },
     { to: "/admin/resources", label: "Resources" },
     { to: "/admin/profile", label: "Profile" },

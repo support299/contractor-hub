@@ -30,6 +30,8 @@ import {
   type Role,
   type UserStatus,
 } from "@/lib/hub-store";
+import { ApiError } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
 import { Trash2, UserCircle2 } from "lucide-react";
 
 type FormState = {
@@ -50,6 +52,8 @@ type FormState = {
   fcRate: string;
   trRate: string;
   suppliesDeduction: string;
+  contractorPercent: string;
+  canChangeContractorPay: boolean;
   hireDate: string;
   availableVacationDays: string;
 };
@@ -72,6 +76,8 @@ const emptyForm: FormState = {
   fcRate: "",
   trRate: "",
   suppliesDeduction: "",
+  contractorPercent: "",
+  canChangeContractorPay: false,
   hireDate: "",
   availableVacationDays: "",
 };
@@ -95,6 +101,8 @@ function formFromUser(u: HubUser): FormState {
     fcRate: u.fcRate != null ? String(u.fcRate) : "",
     trRate: u.trRate != null ? String(u.trRate) : "",
     suppliesDeduction: u.suppliesDeduction != null ? String(u.suppliesDeduction) : "",
+    contractorPercent: u.contractorPercent != null ? String(u.contractorPercent) : "",
+    canChangeContractorPay: Boolean(u.canChangeContractorPay),
     hireDate: u.hireDate ?? "",
     availableVacationDays:
       u.availableVacationDays != null ? String(u.availableVacationDays) : "",
@@ -204,6 +212,9 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
       fcRate: parseNum(form.fcRate),
       trRate: parseNum(form.trRate),
       suppliesDeduction: parseNum(form.suppliesDeduction),
+      // null clears the %, so it's sent even when empty.
+      contractorPercent: form.contractorPercent.trim() ? Number(form.contractorPercent) : null,
+      canChangeContractorPay: form.role === "admin" && form.canChangeContractorPay,
       hireDate: form.hireDate.trim() || null,
       availableVacationDays: form.availableVacationDays.trim()
         ? Number(form.availableVacationDays)
@@ -229,7 +240,11 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
       }
       onOpenChange(false);
     } catch (err) {
-      toast.error("Could not save user");
+      const payError =
+        err instanceof ApiError && err.body && typeof err.body === "object"
+          ? (err.body as Record<string, unknown>).contractorPercent
+          : undefined;
+      toast.error(payError ? String(payError) : "Could not save user");
       console.error(err);
     }
   };
@@ -525,6 +540,45 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
                 </div>
               </div>
             ))}
+            {form.role === "contractor" && (
+              <div className="space-y-2">
+                <Label htmlFor="qe-user-contractorPercent">Contractor %</Label>
+                <div className="relative">
+                  <Input
+                    id="qe-user-contractorPercent"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={100}
+                    className="pr-7"
+                    value={form.contractorPercent}
+                    onChange={(e) => setForm({ ...form, contractorPercent: e.target.value })}
+                    placeholder="e.g. 30"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                    %
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  % of the visit price before tax. Only admins allowed to change contractor pay can edit it.
+                </p>
+              </div>
+            )}
+            {form.role === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="qe-user-canChangeContractorPay">Can change contractor pay</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Switch
+                    id="qe-user-canChangeContractorPay"
+                    checked={form.canChangeContractorPay}
+                    onCheckedChange={(v) => setForm({ ...form, canChangeContractorPay: v })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Contractor %, client pay rules, visit overrides, restocks, paying a week.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
