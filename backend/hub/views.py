@@ -381,12 +381,24 @@ class HubUserViewSet(viewsets.ModelViewSet):
 
         user = serializer.save()
         maybe_fill_jobber_id(user)
+        self._log_pay_changes(serializer, user)
 
     def perform_update(self, serializer):
         from .services.jobber_bridge import maybe_fill_jobber_id
 
         user = serializer.save()
         maybe_fill_jobber_id(user)
+        self._log_pay_changes(serializer, user)
+
+    def _log_pay_changes(self, serializer, user):
+        from .services.contractor_pay import log_change
+
+        for field, old, new in getattr(serializer, "pay_changes", []):
+            log_change(
+                self.request,
+                f"user.{field}",
+                {"user_id": str(user.id), "user_name": user.name, "from": old, "to": new},
+            )
 
     def list(self, request, *args, **kwargs):
         from datetime import date

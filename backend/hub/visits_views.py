@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import HubUser, HubPayVisit
+from .services.contractor_pay import record_late_changes_safely
 from .work_hours_views import MAX_ENTRIES_PER_REQUEST, _secret_ok
 
 MAX_AMOUNT = Decimal("1000000")
@@ -162,6 +163,8 @@ class InternalVisitsUpsertView(APIView):
                 visit.assignees.set(
                     [users[uid] for uid in p["defaults"]["assigned_user_ids"] if uid in users]
                 )
+        # Tips and invoices that change after a week is paid become adjustments.
+        record_late_changes_safely()
 
         return Response(
             {

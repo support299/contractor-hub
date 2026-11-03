@@ -72,6 +72,12 @@ class HubUser(TimeStampedModel):
     supplies_deduction = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    # Contractors: % of a visit's price before tax (after discount). Peter sets it.
+    contractor_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    # Admins Peter trusts to change contractor pay (%, client rules, overrides, restocks).
+    can_change_contractor_pay = models.BooleanField(default=False)
     # False until staff completes Set password (or admin seeds a password)
     password_configured = models.BooleanField(default=False)
     # Phone OTP (cleared after successful verify)
@@ -705,3 +711,109 @@ class HubPayVisit(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.jobber_visit_id} {self.visit_date}"
+
+
+class HubClientPayRule(TimeStampedModel):
+    """How contractors are paid for one client: % of the visit price, or a fixed amount
+    per visit. Clients without a rule use the contractor's %."""
+
+    class Rule(models.TextChoices):
+        PERCENT = "percent", "Percent of price"
+        FIXED = "fixed", "Fixed amount per visit"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client_jobber_id = models.CharField(max_length=128, unique=True)
+    client_name = models.CharField(max_length=255, blank=True, default="")
+    rule = models.CharField(max_length=16, choices=Rule.choices)
+    fixed_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    note = models.TextField(blank=True, default="")
+    changed_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["client_name"]
+
+
+class HubPayOverride(TimeStampedModel):
+    """An admin-set pay amount for one contractor on one visit (an agreed exception, or
+    a manual amount for a visit with no price)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    visit = models.ForeignKey(HubPayVisit, on_delete=models.CASCADE, related_name="pay_overrides")
+    contractor = models.ForeignKey(HubUser, on_delete=models.CASCADE, related_name="pay_overrides")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.TextField(blank=True, default="")
+    changed_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["visit", "contractor"], name="uniq_pay_override")
+        ]
+
+
+class HubPayDeduction(TimeStampedModel):
+    """A restock deduction, taken from the pay week its date falls in. (The flat weekly
+    supplies deduction comes from HubUser.supplies_deduction and isn't stored.)"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contractor = models.ForeignKey(HubUser, on_delete=models.CASCADE, related_name="pay_deductions")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(db_index=True)
+    note = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-date"]
+
+
+class HubPayWeek(TimeStampedModel):
+    """A paid pay week (Sunday–Saturday). rows is the pay as it stood when marked paid;
+    later changes never alter it (increases become HubPayAdjustment rows)."""
+
+    week_start = models.DateField(primary_key=True)
+    paid_at = models.DateTimeField()
+    paid_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    rows = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["-week_start"]
+
+
+class HubPayAdjustment(TimeStampedModel):
+    """A late increase on a paid visit (tip arrived, invoice higher), paid in the week
+    of `date`, the day it was found. Decreases are left alone (Peter)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_row_id = models.CharField(max_length=300, db_index=True)
+    contractor = models.ForeignKey(HubUser, on_delete=models.CASCADE, related_name="pay_adjustments")
+    visit = models.ForeignKey(
+        HubPayVisit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(db_index=True)
+    note = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-date"]
+
+
+class HubPayChangeLog(models.Model):
+    """Who changed what in contractor pay, and when."""
+
+    id = models.BigAutoField(primary_key=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    changed_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    action = models.CharField(max_length=64)
+    detail = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["-created_at"]

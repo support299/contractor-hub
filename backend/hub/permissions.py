@@ -22,6 +22,16 @@ def user_is_hub_admin(user) -> bool:
     return bool(profile and profile.role == "admin")
 
 
+def user_can_change_contractor_pay(user) -> bool:
+    """Admins Peter has allowed to change contractor pay (or a Django superuser)."""
+    if not user_is_hub_admin(user):
+        return False
+    if hub_open_access() or getattr(user, "is_superuser", False):
+        return True
+    profile = getattr(user, "hub_profile", None)
+    return bool(profile and profile.can_change_contractor_pay)
+
+
 def user_is_hub_display(user) -> bool:
     if not user_is_authenticated(user):
         return False
@@ -39,6 +49,11 @@ class IsAdminRole(BasePermission):
 
     def has_permission(self, request, view):
         return user_is_hub_admin(request.user)
+
+
+class CanChangeContractorPay(BasePermission):
+    def has_permission(self, request, view):
+        return user_can_change_contractor_pay(request.user)
 
 
 class HubAccess(BasePermission):

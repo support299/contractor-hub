@@ -486,8 +486,28 @@ def build_late_arrivals_section(from_date: date | None, to_date: date | None) ->
     }
 
 
+def build_contractor_pay_section(from_date: date | None, to_date: date | None) -> dict:
+    """One row per visit per contractor (pay, tip), plus deduction and late-adjustment
+    rows. Ids stay the same when amounts change; void rows (amount 0) replace pay that
+    no longer applies. Deductions are negative and aren't wages."""
+    from hub.services.contractor_pay import RULES_TEXT, build_rows, summarize
+
+    rows = build_rows(from_date, to_date)
+    for r in rows:
+        r.pop("basis", None)
+        r.pop("override_id", None)
+        r.pop("deduction_id", None)
+    return {
+        "available": True,
+        "rules": RULES_TEXT,
+        "summary": summarize(rows),
+        "records": rows,
+    }
+
+
 def build_extra_sections(from_date: date | None, to_date: date | None) -> dict[str, Any]:
     return {
+        "contractor_pay": build_contractor_pay_section(from_date, to_date),
         "reviews": build_reviews_section(from_date, to_date),
         "complaints": build_complaints_section(from_date, to_date),
         "service_cancellations": build_cancellations_section(from_date, to_date),

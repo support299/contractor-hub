@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from . import (
     analytics_views,
+    contractor_pay_views,
     google_review_views,
     lock_in_views,
     views,
@@ -110,6 +111,51 @@ urlpatterns = [
         "internal/visits/upsert/",
         visits_views.InternalVisitsUpsertView.as_view(),
         name="internal-visits-upsert",
+    ),
+    path(
+        "contractor-pay/",
+        contractor_pay_views.ContractorPayWeekView.as_view(),
+        name="contractor-pay-week",
+    ),
+    path(
+        "contractor-pay/weeks/<str:week>/paid/",
+        contractor_pay_views.ContractorPayMarkPaidView.as_view(),
+        name="contractor-pay-mark-paid",
+    ),
+    path(
+        "contractor-pay/client-rules/",
+        contractor_pay_views.ClientPayRulesView.as_view(),
+        name="contractor-pay-client-rules",
+    ),
+    path(
+        "contractor-pay/client-rules/<uuid:pk>/",
+        contractor_pay_views.ClientPayRuleDetailView.as_view(),
+        name="contractor-pay-client-rule",
+    ),
+    path(
+        "contractor-pay/overrides/",
+        contractor_pay_views.PayOverridesView.as_view(),
+        name="contractor-pay-overrides",
+    ),
+    path(
+        "contractor-pay/overrides/<uuid:pk>/",
+        contractor_pay_views.PayOverrideDetailView.as_view(),
+        name="contractor-pay-override",
+    ),
+    path(
+        "contractor-pay/restocks/",
+        contractor_pay_views.RestocksView.as_view(),
+        name="contractor-pay-restocks",
+    ),
+    path(
+        "contractor-pay/restocks/<uuid:pk>/",
+        contractor_pay_views.RestockDetailView.as_view(),
+        name="contractor-pay-restock",
+    ),
+    path(
+        "contractor-pay/log/",
+        contractor_pay_views.PayChangeLogView.as_view(),
+        name="contractor-pay-log",
     ),
     path(
         "internal/lock-in/users/",

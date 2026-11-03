@@ -68,6 +68,18 @@ class HubUserSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    contractorPercent = serializers.DecimalField(
+        source="contractor_percent",
+        max_digits=5,
+        decimal_places=2,
+        min_value=0,
+        max_value=100,
+        required=False,
+        allow_null=True,
+    )
+    canChangeContractorPay = serializers.BooleanField(
+        source="can_change_contractor_pay", required=False
+    )
     passwordConfigured = serializers.BooleanField(
         source="password_configured", read_only=True
     )
@@ -91,9 +103,13 @@ class HubUserSerializer(serializers.ModelSerializer):
         "fcRate",
         "trRate",
         "suppliesDeduction",
+        "contractorPercent",
+        "canChangeContractorPay",
         "jobberId",
         "ghlId",
     )
+    # Changing these needs the contractor-pay permission, not just admin.
+    _PAY_FIELDS = ("contractor_percent", "can_change_contractor_pay")
 
     class Meta:
         model = HubUser
@@ -116,6 +132,8 @@ class HubUserSerializer(serializers.ModelSerializer):
             "fcRate",
             "trRate",
             "suppliesDeduction",
+            "contractorPercent",
+            "canChangeContractorPay",
             "passwordConfigured",
             "hireDate",
             "availableVacationDays",
@@ -131,9 +149,14 @@ class HubUserSerializer(serializers.ModelSerializer):
             from .permissions import user_is_hub_admin, user_is_hub_display
 
             if user_is_hub_display(request.user):
-                data.pop("jobberId", None)
-                data.pop("ghlId", None)
-                data.pop("suppliesDeduction", None)
+                for key in (
+                    "jobberId",
+                    "ghlId",
+                    "suppliesDeduction",
+                    "contractorPercent",
+                    "canChangeContractorPay",
+                ):
+                    data.pop(key, None)
                 for key in ("email", "phone", "hireDate", "availableVacationDays"):
                     data.pop(key, None)
                 return data
@@ -147,6 +170,7 @@ class HubUserSerializer(serializers.ModelSerializer):
                 if is_self:
                     # Own pay rates are needed to read personal payroll totals.
                     data.pop("suppliesDeduction", None)
+                    data.pop("canChangeContractorPay", None)
                 else:
                     for key in self._ADMIN_ONLY_FIELDS:
                         data.pop(key, None)
@@ -162,6 +186,25 @@ class HubUserSerializer(serializers.ModelSerializer):
         validated_data["picture_thumb"] = picture_thumb(
             validated_data.get("picture") or ""
         )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        defaults = {"contractor_percent": None, "can_change_contractor_pay": False}
+        self.pay_changes = [
+            (field, old, attrs[field])
+            for field in self._PAY_FIELDS
+            if field in attrs
+            and attrs[field] != (old := getattr(self.instance, field, defaults[field]))
+        ]
+        request = self.context.get("request")
+        if self.pay_changes and request is not None:
+            from .permissions import user_can_change_contractor_pay
+
+            if not user_can_change_contractor_pay(request.user):
+                raise serializers.ValidationError(
+                    {"contractorPercent": "Only admins allowed to change contractor pay can change this."}
+                )
+        return attrs
 
     def create(self, validated_data):
         self._apply_picture_thumb(validated_data)
