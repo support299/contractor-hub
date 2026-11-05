@@ -56,6 +56,7 @@ import {
   computeEarnings,
   computeEfficiencyScore,
   computeAttendanceScore,
+  countAttendance,
   collectIncidents,
   countFeedbackByAudience,
   dateInRange,
@@ -256,6 +257,13 @@ export default function DashboardPage() {
   const attendanceLabel = `${attendance}%`;
   const attendanceBadge =
     attendance === 100 ? "Perfect" : attendance >= 95 ? "On target" : "Below target";
+
+  const attendanceCounts = useMemo(
+    () => countAttendance(selected, absenceSubs, absenceForm, range),
+    [selected, absenceForm, absenceSubs, range],
+  );
+  const absenceTotal = attendanceCounts.absent + attendanceCounts.sick;
+  const vacationDays = selected?.availableVacationDays;
 
   const pendingLockIns = useMemo(() => {
     if (!selected) return [];
@@ -517,9 +525,27 @@ export default function DashboardPage() {
               <p className="text-xs text-muted-foreground mb-4">
                 From Hub form data for this period.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <MetricBox label="ATTENDANCE" value={attendanceLabel} badge={attendanceBadge} badgeTone="emerald" />
                 <MetricBox label="EFFICIENCY" value={efficiencyLabel} badge={efficiencyBadge} badgeTone="emerald" />
+                <MetricBox
+                  label="LATE ARRIVALS"
+                  value={String(attendanceCounts.late)}
+                  badge="This period"
+                  badgeTone="emerald"
+                />
+                <MetricBox
+                  label="ABSENCES"
+                  value={String(absenceTotal)}
+                  badge={attendanceCounts.sick ? `incl. ${attendanceCounts.sick} sick` : "This period"}
+                  badgeTone="emerald"
+                />
+                <MetricBox
+                  label="VACATION DAYS LEFT"
+                  value={vacationDays == null ? "—" : String(vacationDays)}
+                  badge="Available now"
+                  badgeTone="emerald"
+                />
               </div>
             </div>
 

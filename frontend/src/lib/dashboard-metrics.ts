@@ -591,20 +591,47 @@ export function computeAttendanceScore(
   form: HubForm | null,
   range: DateRange | undefined,
 ): number {
-  if (!user || !form) return 100;
-  const dateId = findFieldId(form, "Date") ?? findFieldIdByType(form, "date");
-  let count = 0;
-  for (const sub of submissions) {
-    if (!submissionMatchesUser(sub, form, user.name)) continue;
-    const rawDate = dateId ? String(sub.answers[dateId] ?? "").trim() : "";
-    if (rawDate) {
-      if (!dayInRange(rawDate, range)) continue;
-    } else if (!inRange(sub, range)) {
-      continue;
-    }
-    count += 1;
+  return Math.max(0, 100 - attendanceRows(user, submissions, form, range).length * 5);
+}
+
+export interface AttendanceCounts {
+  late: number;
+  absent: number;
+  sick: number;
+}
+
+/** New Absence rows for this person in the period, split by Type (Late / Absent / Sick). */
+export function countAttendance(
+  user: HubUser | undefined,
+  submissions: FormSubmission[],
+  form: HubForm | null,
+  range: DateRange | undefined,
+): AttendanceCounts {
+  const counts: AttendanceCounts = { late: 0, absent: 0, sick: 0 };
+  const typeId = findFieldId(form, "Type") ?? findFieldIdByType(form, "dropdown");
+  for (const sub of attendanceRows(user, submissions, form, range)) {
+    const type = typeId ? String(sub.answers[typeId] ?? "").trim().toLowerCase() : "";
+    if (/\blate\b/.test(type)) counts.late += 1;
+    else if (/\bsick\b/.test(type)) counts.sick += 1;
+    else counts.absent += 1;
   }
-  return Math.max(0, 100 - count * 5);
+  return counts;
+}
+
+/** The period uses the Date answered on the form; rows without one fall back to when they were logged. */
+function attendanceRows(
+  user: HubUser | undefined,
+  submissions: FormSubmission[],
+  form: HubForm | null,
+  range: DateRange | undefined,
+): FormSubmission[] {
+  if (!user || !form) return [];
+  const dateId = findFieldId(form, "Date") ?? findFieldIdByType(form, "date");
+  return submissions.filter((sub) => {
+    if (!submissionMatchesUser(sub, form, user.name)) return false;
+    const rawDate = dateId ? String(sub.answers[dateId] ?? "").trim() : "";
+    return rawDate ? dayInRange(rawDate, range) : inRange(sub, range);
+  });
 }
 
 export function sumForUsers(
