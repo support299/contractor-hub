@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -185,8 +186,15 @@ export default function CalendarPage() {
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
 
+  // Deep link from Insights alerts: /admin/calendar?request=<submission id>
+  // shows that one request whatever its status, then highlights it.
+  const [searchParams] = useSearchParams();
+  const focusRequestId = searchParams.get("request") ?? "";
+
   // filters for the sidebar list
-  const [filterStatus, setFilterStatus] = useState<ApprovalStatus | "all">("pending");
+  const [filterStatus, setFilterStatus] = useState<ApprovalStatus | "all">(
+    focusRequestId ? "all" : "pending",
+  );
   const [filterStaff, setFilterStaff] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterFrom, setFilterFrom] = useState<string>("");
@@ -281,6 +289,7 @@ export default function CalendarPage() {
   const filteredRequests = useMemo(() => {
     return requests.filter((r) => {
       if (!canApprove && session?.name && !r.staff.includes(session.name)) return false;
+      if (focusRequestId) return r.submission.id === focusRequestId;
       if (filterStatus !== "all" && r.status !== filterStatus) return false;
       if (filterStaff !== "all" && !r.staff.includes(filterStaff)) return false;
       if (filterType !== "all" && r.leaveType !== filterType) return false;
@@ -296,7 +305,7 @@ export default function CalendarPage() {
       }
       return true;
     });
-  }, [requests, filterStatus, filterStaff, filterType, filterFrom, filterTo, canApprove, session?.name]);
+  }, [requests, filterStatus, filterStaff, filterType, filterFrom, filterTo, canApprove, session?.name, focusRequestId]);
 
   // approved leaves indexed by day for calendar
   const leavesByDay = useMemo(() => {
@@ -598,11 +607,16 @@ export default function CalendarPage() {
           )}
           {!loading && filteredRequests.length === 0 && (
             <div className="p-4 text-sm text-muted-foreground">
-              No requests match these filters.
+              {focusRequestId ? "That request no longer exists." : "No requests match these filters."}
             </div>
           )}
           {filteredRequests.map((r) => (
-            <div key={r.submission.id} className="p-3 space-y-2">
+            <div
+              key={r.submission.id}
+              className={`p-3 space-y-2 ${
+                r.submission.id === focusRequestId ? "bg-emerald-50 border-l-4 border-emerald-500" : ""
+              }`}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-medium text-sm truncate">
