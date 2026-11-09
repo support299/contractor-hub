@@ -2247,3 +2247,57 @@ class MeProfileUpdateTests(TestCase):
 
 
 
+
+
+class LeaveExportCoverageTests(TestCase):
+    """Manager Overview: each leave record carries the person's role and the Jobber
+    visits they are booked on during the leave."""
+
+    def setUp(self):
+        from hub.models import HubForm, HubFormSubmission, HubLeaveApproval, HubPayVisit, HubUser
+
+        self.contractor = HubUser.objects.create(
+            name="Cara", role=HubUser.Role.CONTRACTOR, jobber_id="J-CARA"
+        )
+        self.form = HubForm.objects.create(
+            name="Request Time Off", slug="request-time-off", fields=LEAVE_FIELDS
+        )
+        sub = HubFormSubmission.objects.create(
+            form=self.form,
+            answers={"u": [str(self.contractor.id)], "s": "2026-11-16", "e": "2026-11-18", "t": "Vacation"},
+        )
+        HubLeaveApproval.objects.create(submission=sub)
+
+        def visit(vid, day, status="SCHEDULED", mine=True):
+            v = HubPayVisit.objects.create(
+                jobber_visit_id=vid,
+                visit_date=day,
+                status=status,
+                client_name=f"Client {vid}",
+                assigned_user_ids=["J-CARA", "J-OTHER"] if mine else ["J-OTHER"],
+            )
+            if mine:
+                v.assignees.set([self.contractor])
+
+        visit("V-in", date(2026, 11, 17))
+        visit("V-before", date(2026, 11, 15))
+        visit("V-cancelled", date(2026, 11, 18), status="cancelled")
+        visit("V-not-mine", date(2026, 11, 16), mine=False)
+
+    def test_role_and_affected_visits(self):
+        from hub.services.analytics import build_leave_section
+
+        [record] = build_leave_section(None, None)["all_requests"]
+        self.assertEqual(record["employee_role"], "contractor")
+        self.assertEqual(
+            record["affected_visits"],
+            [
+                {
+                    "jobber_visit_id": "V-in",
+                    "date": "2026-11-17",
+                    "client_name": "Client V-in",
+                    "job_title": "",
+                    "headcount": 2,
+                }
+            ],
+        )
