@@ -32,6 +32,34 @@ def user_can_change_contractor_pay(user) -> bool:
     return bool(profile and profile.can_change_contractor_pay)
 
 
+def user_can_approve_leave(user) -> bool:
+    """Admins, plus active staff Peter has given the approve-time-off switch."""
+    if user_is_hub_admin(user):
+        return True
+    if not user_is_authenticated(user):
+        return False
+    profile = getattr(user, "hub_profile", None)
+    return bool(profile and profile.can_approve_leave and profile.status == "active")
+
+
+def internal_secret_ok(request) -> bool:
+    """Shared-secret check for the endpoints service-creator calls server to server."""
+    import hmac
+
+    expected = getattr(settings, "HUB_INTERNAL_SECRET", "") or ""
+    if not expected:
+        return False
+    given = request.headers.get("X-Internal-Secret", "")
+    return hmac.compare_digest(given.encode(), expected.encode())
+
+
+class InternalSecret(BasePermission):
+    message = "Missing or invalid X-Internal-Secret header."
+
+    def has_permission(self, request, view):
+        return internal_secret_ok(request)
+
+
 def user_is_hub_display(user) -> bool:
     if not user_is_authenticated(user):
         return False
@@ -54,6 +82,11 @@ class IsAdminRole(BasePermission):
 class CanChangeContractorPay(BasePermission):
     def has_permission(self, request, view):
         return user_can_change_contractor_pay(request.user)
+
+
+class CanApproveLeave(BasePermission):
+    def has_permission(self, request, view):
+        return user_can_approve_leave(request.user)
 
 
 class HubAccess(BasePermission):

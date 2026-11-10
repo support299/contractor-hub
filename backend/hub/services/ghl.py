@@ -525,3 +525,83 @@ def push_otp_to_ghl(hub_user: HubUser, otp: str) -> str | None:
         hub_user.save(update_fields=["ghl_id", "updated_at"])
 
     return contact_id
+
+
+CONTRACTOR_PERCENT_FIELD_NAME = "Contractor Percent"
+
+
+def ensure_custom_field(name: str, placeholder: str, location_id: str | None = None) -> str | None:
+    """Return the id of a TEXT contact custom field called `name`, creating it if missing."""
+    loc = location_id or _location_id()
+    headers = _headers()
+    base = f"{_base_url()}/locations/{loc}/customFields"
+    try:
+        resp = requests.get(f"{base}?model=contact", headers=headers, timeout=30)
+        if resp.status_code == 200:
+            for field in resp.json().get("customFields") or []:
+                if (field.get("name") or "").strip().lower() == name.lower():
+                    return field.get("id")
+        create_resp = requests.post(
+            base,
+            json={"name": name, "dataType": "TEXT", "placeholder": placeholder, "model": "contact"},
+            headers=headers,
+            timeout=30,
+        )
+        if create_resp.status_code in (200, 201):
+            data = create_resp.json()
+            return (data.get("customField") or {}).get("id") or data.get("id")
+        logger.error("GHL ensure field %r failed: %s %s", name, create_resp.status_code, create_resp.text[:300])
+    except requests.RequestException as exc:
+        logger.error("GHL ensure field %r error: %s", name, exc)
+    return None
+
+
+def set_contact_custom_field(contact_id: str, field_id: str, value: str) -> bool:
+    try:
+        resp = requests.put(
+            f"{_base_url()}/contacts/{contact_id}",
+            json={"customFields": [{"id": field_id, "value": value}]},
+            headers=_headers(),
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            return True
+        logger.error("GHL set field failed: %s %s", resp.status_code, resp.text[:300])
+    except requests.RequestException as exc:
+        logger.error("GHL set field error: %s", exc)
+    return False
+
+
+def push_contractor_percent(hub_user: HubUser) -> bool:
+    """Copy the Hub's contractor % to the GHL contact's "Contractor Percent" field.
+    The Hub stays the source of truth; GHL only follows. Empty % clears the field."""
+    contact_id = (hub_user.ghl_id or "").strip()
+    if not contact_id:
+        phone = (hub_user.phone or "").strip()
+        if not phone:
+            logger.info("GHL percent skipped for %s: no ghl_id or phone", hub_user.name)
+            return False
+        contact_id = upsert_contact_by_phone(
+            phone, email=(hub_user.email or "").strip(), name=(hub_user.name or "").strip()
+        )
+        if not contact_id:
+            return False
+        hub_user.ghl_id = contact_id
+        hub_user.save(update_fields=["ghl_id", "updated_at"])
+    field_id = ensure_custom_field(CONTRACTOR_PERCENT_FIELD_NAME, "contractor_percent")
+    if not field_id:
+        return False
+    pct = hub_user.contractor_percent
+    value = "" if pct is None else f"{pct.normalize():f}"
+    return set_contact_custom_field(contact_id, field_id, value)
+
+
+def push_contractor_percent_safely(hub_user_id) -> None:
+    """Background-safe: never raises; a GHL outage must not block saving a user."""
+    try:
+        user = HubUser.objects.filter(pk=hub_user_id).first()
+        if user is None:
+            return
+        push_contractor_percent(user)
+    except Exception:
+        logger.exception("GHL percent push failed for %s", hub_user_id)

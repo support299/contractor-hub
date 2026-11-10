@@ -78,6 +78,8 @@ class HubUser(TimeStampedModel):
     )
     # Admins Peter trusts to change contractor pay (%, client rules, overrides, restocks).
     can_change_contractor_pay = models.BooleanField(default=False)
+    # Non-admins (e.g. the office manager) allowed to approve or reject time off.
+    can_approve_leave = models.BooleanField(default=False)
     # False until staff completes Set password (or admin seeds a password)
     password_configured = models.BooleanField(default=False)
     # Phone OTP (cleared after successful verify)

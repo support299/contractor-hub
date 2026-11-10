@@ -182,3 +182,32 @@ def vacation_summary_for_parsed(parsed: dict, on_date: date | None = None) -> di
             "Approve still allowed; balance will not go below 0."
         )
     return summary
+
+
+_UNSCHEDULED_STATUSES = {"deleted", "cancelled", "canceled"}
+
+
+def affected_visits_for_parsed(parsed: dict) -> list[dict]:
+    """Jobber visits the person is booked on during the leave, so whoever approves
+    sees the coverage impact first. Service-creator pushes visits 6 weeks ahead."""
+    from hub.models import HubPayVisit
+
+    user, start, end = parsed.get("user"), parsed.get("start"), parsed.get("end")
+    if not user or not start:
+        return []
+    qs = (
+        HubPayVisit.objects.filter(assignees=user, visit_date__gte=start, visit_date__lte=end or start)
+        .exclude(status__in=_UNSCHEDULED_STATUSES)
+        .exclude(status__iexact="COMPLETED")
+        .order_by("visit_date", "client_name")
+    )
+    return [
+        {
+            "jobber_visit_id": v.jobber_visit_id,
+            "date": v.visit_date.isoformat(),
+            "client_name": v.client_name,
+            "job_title": v.job_title,
+            "headcount": len(v.assigned_user_ids or []),
+        }
+        for v in qs
+    ]

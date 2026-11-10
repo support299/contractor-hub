@@ -115,6 +115,7 @@ def tokens_for_hub_user(hub_user: HubUser) -> dict:
             "email": hub_user.email,
             "phone": hub_user.phone or "",
             "position": hub_user.position or "",
+            "canApproveLeave": hub_user.role == HubUser.Role.ADMIN or bool(hub_user.can_approve_leave),
         },
     }
 

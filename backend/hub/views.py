@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
@@ -29,13 +30,16 @@ from .models import (
     HubUser,
 )
 from .permissions import (
+    CanApproveLeave,
     HubAccess,
     HubStaffAccess,
     IsAdminRole,
+    user_can_approve_leave,
     user_is_hub_admin,
     user_is_hub_display,
 )
 from .staff_access import (
+    LEAVE_FORM_SLUG,
     SCOREBOARD_READ_SLUGS,
     STAFF_CREATE_BLOCKED_SLUGS,
     filter_leave_approvals_for_staff,
@@ -305,6 +309,7 @@ class MeView(APIView):
                     "email": profile.email,
                     "phone": profile.phone,
                     "position": profile.position or "",
+                    "canApproveLeave": user_can_approve_leave(request.user),
                 }
             )
         return Response(
@@ -393,11 +398,19 @@ class HubUserViewSet(viewsets.ModelViewSet):
     def _log_pay_changes(self, serializer, user):
         from .services.contractor_pay import log_change
 
-        for field, old, new in getattr(serializer, "pay_changes", []):
+        changes = getattr(serializer, "pay_changes", [])
+        for field, old, new in changes:
             log_change(
                 self.request,
                 f"user.{field}",
                 {"user_id": str(user.id), "user_name": user.name, "from": old, "to": new},
+            )
+        if any(field == "contractor_percent" for field, _, _ in changes):
+            from .services.background import run_in_background
+            from .services.ghl import push_contractor_percent_safely
+
+            run_in_background(
+                lambda: push_contractor_percent_safely(user.id), name=f"ghl-percent-{user.id}"
             )
 
     def list(self, request, *args, **kwargs):
@@ -518,7 +531,10 @@ class HubFormSubmissionViewSet(viewsets.ModelViewSet):
         profile = getattr(self.request.user, "hub_profile", None)
         if not profile:
             return qs.none()
-        return filter_submissions_for_staff(qs, profile)
+        own = filter_submissions_for_staff(qs, profile)
+        if user_can_approve_leave(self.request.user):
+            return qs.filter(Q(form__slug=LEAVE_FORM_SLUG) | Q(id__in=own.values("id")))
+        return own
 
     def create(self, request, *args, **kwargs):
         form_id = request.data.get("formId") or request.data.get("form_id")
@@ -619,11 +635,11 @@ class HubLeaveApprovalViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
             return [HubStaffAccess()]
-        return [IsAdminRole()]
+        return [CanApproveLeave()]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if user_is_hub_admin(self.request.user):
+        if user_can_approve_leave(self.request.user):
             return qs
         profile = getattr(self.request.user, "hub_profile", None)
         if not profile:

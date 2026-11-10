@@ -18,14 +18,13 @@ from hub.models import (
     HubFormSubmission,
     HubLeaveApproval,
     HubNotification,
-    HubPayVisit,
     HubTrainingMaterial,
     HubUser,
     HubVisit,
     LockInBonus,
     PendingLockIn,
 )
-from hub.services.leave_request import parse_leave_submission
+from hub.services.leave_request import affected_visits_for_parsed, parse_leave_submission
 
 
 def _dec(value) -> str | None:
@@ -140,33 +139,6 @@ def build_employees_section() -> dict:
     }
 
 
-_UNSCHEDULED = {"deleted", "cancelled", "canceled"}
-
-
-def _affected_visits(user, start: date | None, end: date | None) -> list[dict]:
-    """Jobber visits this person is assigned to during the leave, so Cassidy sees the
-    coverage impact before approving. Pay visits are synced for the next few weeks
-    too, so upcoming requests are covered."""
-    if not user or not start:
-        return []
-    qs = (
-        HubPayVisit.objects.filter(assignees=user, visit_date__gte=start, visit_date__lte=end or start)
-        .exclude(status__in=_UNSCHEDULED)
-        .exclude(status__iexact="COMPLETED")
-        .order_by("visit_date", "client_name")
-    )
-    return [
-        {
-            "jobber_visit_id": v.jobber_visit_id,
-            "date": v.visit_date.isoformat(),
-            "client_name": v.client_name,
-            "job_title": v.job_title,
-            "headcount": len(v.assigned_user_ids or []),
-        }
-        for v in qs
-    ]
-
-
 def build_leave_section(from_date: date | None, to_date: date | None) -> dict:
     qs = HubLeaveApproval.objects.select_related("submission", "submission__form").all()
     start_dt, end_dt = _day_bounds(from_date, to_date)
@@ -208,7 +180,7 @@ def build_leave_section(from_date: date | None, to_date: date | None) -> dict:
             "employee_role": user.role if user else "",
             "start_date": _iso(parsed.get("start")),
             "end_date": _iso(parsed.get("end")),
-            "affected_visits": _affected_visits(user, parsed.get("start"), parsed.get("end"))
+            "affected_visits": affected_visits_for_parsed(parsed)
             if approval.status != HubLeaveApproval.Status.REJECTED
             else [],
             "weekday_count": parsed.get("weekday_count") or 0,

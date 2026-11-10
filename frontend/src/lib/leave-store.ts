@@ -12,6 +12,14 @@ export interface VacationSummary {
   warning: string | null;
 }
 
+export interface AffectedVisit {
+  jobber_visit_id: string;
+  date: string;
+  client_name: string;
+  job_title: string;
+  headcount: number;
+}
+
 export interface LeaveApproval {
   submission_id: string;
   status: ApprovalStatus;
@@ -21,6 +29,7 @@ export interface LeaveApproval {
   jobber_sync_error?: string;
   vacation_days_deducted?: string | null;
   vacation_summary?: VacationSummary | null;
+  affected_visits?: AffectedVisit[];
 }
 
 export async function fetchLeaveApprovals(): Promise<LeaveApproval[]> {

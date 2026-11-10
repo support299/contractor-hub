@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+
+from django.db.models import Q
 from datetime import date
 
 from hub.models import HubFormSubmission, HubLeaveApproval, HubUser
@@ -62,17 +64,18 @@ def notify_leave_submitted(submission: HubFormSubmission) -> None:
         name = parsed.get("display_name") or "Someone"
         body = f"{name} submitted a {_request_phrase(kind, dates)}."
         payload = _payload(submission, parsed)
-        admins = HubUser.objects.filter(
-            role=HubUser.Role.ADMIN,
-            status=HubUser.Status.ACTIVE,
+        # Admins plus anyone with the approve-time-off switch (e.g. the office manager).
+        admins = HubUser.objects.filter(status=HubUser.Status.ACTIVE).filter(
+            Q(role=HubUser.Role.ADMIN) | Q(can_approve_leave=True)
         )
+        link = f"{LEAVE_CALENDAR_PATH}?request={submission.id}"
         for admin in admins:
             notify_user(
                 admin,
                 type=TYPE_SUBMITTED,
                 title="New leave request",
                 body=body,
-                link=LEAVE_CALENDAR_PATH,
+                link=link,
                 payload=payload,
                 event_key=event_key_for(
                     TYPE_SUBMITTED, submission.id, admin.id
@@ -85,12 +88,12 @@ def notify_leave_submitted(submission: HubFormSubmission) -> None:
             event_key=event_key_for(TYPE_SUBMITTED, submission.id, "email"),
             title="New leave request",
             body=body,
-            link=LEAVE_CALENDAR_PATH,
+            link=link,
         )
         send_designated_notification_sms(
             event_key=event_key_for(TYPE_SUBMITTED, submission.id, "sms"),
             body=body,
-            link=LEAVE_CALENDAR_PATH,
+            link=link,
         )
     except Exception:
         logger.exception(

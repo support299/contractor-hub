@@ -54,6 +54,7 @@ type FormState = {
   suppliesDeduction: string;
   contractorPercent: string;
   canChangeContractorPay: boolean;
+  canApproveLeave: boolean;
   hireDate: string;
   availableVacationDays: string;
 };
@@ -78,6 +79,7 @@ const emptyForm: FormState = {
   suppliesDeduction: "",
   contractorPercent: "",
   canChangeContractorPay: false,
+  canApproveLeave: false,
   hireDate: "",
   availableVacationDays: "",
 };
@@ -103,6 +105,7 @@ function formFromUser(u: HubUser): FormState {
     suppliesDeduction: u.suppliesDeduction != null ? String(u.suppliesDeduction) : "",
     contractorPercent: u.contractorPercent != null ? String(u.contractorPercent) : "",
     canChangeContractorPay: Boolean(u.canChangeContractorPay),
+    canApproveLeave: Boolean(u.canApproveLeave),
     hireDate: u.hireDate ?? "",
     availableVacationDays:
       u.availableVacationDays != null ? String(u.availableVacationDays) : "",
@@ -215,6 +218,8 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
       // null clears the %, so it's sent even when empty.
       contractorPercent: form.contractorPercent.trim() ? Number(form.contractorPercent) : null,
       canChangeContractorPay: form.role === "admin" && form.canChangeContractorPay,
+      // Admins can always approve; the switch is for staff like the office manager.
+      canApproveLeave: form.role !== "admin" && form.role !== "display" && form.canApproveLeave,
       hireDate: form.hireDate.trim() || null,
       availableVacationDays: form.availableVacationDays.trim()
         ? Number(form.availableVacationDays)
@@ -575,6 +580,21 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
                   />
                   <span className="text-xs text-muted-foreground">
                     Contractor %, client pay rules, visit overrides, restocks, paying a week.
+                  </span>
+                </div>
+              </div>
+            )}
+            {(form.role === "employee" || form.role === "contractor") && (
+              <div className="space-y-2">
+                <Label htmlFor="qe-user-canApproveLeave">Can approve time off</Label>
+                <div className="flex items-center gap-2 h-10">
+                  <Switch
+                    id="qe-user-canApproveLeave"
+                    checked={form.canApproveLeave}
+                    onCheckedChange={(v) => setForm({ ...form, canApproveLeave: v })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Sees every time-off request on the Calendar and can approve or reject it, without admin access.
                   </span>
                 </div>
               </div>

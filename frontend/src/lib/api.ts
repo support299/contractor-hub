@@ -12,6 +12,7 @@ export type AuthUser = {
   email: string;
   phone?: string;
   position?: string;
+  canApproveLeave?: boolean;
 };
 
 export type Session = {
@@ -22,6 +23,7 @@ export type Session = {
   email?: string;
   phone?: string;
   position?: string;
+  canApproveLeave?: boolean;
 };
 
 export function getAccessToken(): string | null {
@@ -62,6 +64,7 @@ export type MeProfile = {
   email: string;
   phone: string;
   position: string;
+  canApproveLeave?: boolean;
 };
 
 export function setAuth(access: string, refresh: string, user: AuthUser) {
@@ -75,6 +78,7 @@ export function setAuth(access: string, refresh: string, user: AuthUser) {
     email: user.email,
     phone: user.phone || "",
     position: user.position || "",
+    canApproveLeave: Boolean(user.canApproveLeave),
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   window.dispatchEvent(new CustomEvent("cotg-storage"));
@@ -92,6 +96,7 @@ function patchSessionFromMe(me: MeProfile) {
     email: me.email,
     phone: me.phone || "",
     position: me.position || session.position || "",
+    canApproveLeave: Boolean(me.canApproveLeave),
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent("cotg-storage"));
@@ -225,6 +230,17 @@ export async function verifyOtp(phone: string, otp: string) {
 
 export async function fetchMe(): Promise<MeProfile> {
   return api<MeProfile>("/auth/me/");
+}
+
+/** Pull fresh role/permission flags (e.g. "Can approve time off") into the stored
+ *  session, so a switch an admin flips takes effect on the next page load, not the
+ *  next login. Errors are ignored: the session we already have still works. */
+export async function refreshSession(): Promise<void> {
+  try {
+    patchSessionFromMe(await fetchMe());
+  } catch {
+    /* offline or token refresh in progress: keep the current session */
+  }
 }
 
 export async function updateMe(patch: { email?: string; phone?: string }): Promise<MeProfile> {

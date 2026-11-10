@@ -3,19 +3,20 @@
 from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import HubUser, HubVisit, LockInBonus, PendingLockIn
-from .permissions import HubAccess, IsAdminRole, user_can_read_scoreboard, user_is_hub_admin
+from .permissions import HubAccess, InternalSecret, IsAdminRole, user_can_read_scoreboard, user_is_hub_admin
 from .serializers import HubVisitSerializer, LockInBonusSerializer, PendingLockInSerializer
 from .services import lock_in as svc
 
 
 class InternalLockInAPIView(APIView):
+    """Server-to-server endpoints for service-creator. Header: X-Internal-Secret."""
+
     authentication_classes = []
-    permission_classes = [AllowAny]
+    permission_classes = [InternalSecret]
 
 
 class InternalVisitUpsertView(InternalLockInAPIView):

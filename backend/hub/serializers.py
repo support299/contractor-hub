@@ -80,6 +80,7 @@ class HubUserSerializer(serializers.ModelSerializer):
     canChangeContractorPay = serializers.BooleanField(
         source="can_change_contractor_pay", required=False
     )
+    canApproveLeave = serializers.BooleanField(source="can_approve_leave", required=False)
     passwordConfigured = serializers.BooleanField(
         source="password_configured", read_only=True
     )
@@ -105,6 +106,7 @@ class HubUserSerializer(serializers.ModelSerializer):
         "suppliesDeduction",
         "contractorPercent",
         "canChangeContractorPay",
+        "canApproveLeave",
         "jobberId",
         "ghlId",
     )
@@ -134,6 +136,7 @@ class HubUserSerializer(serializers.ModelSerializer):
             "suppliesDeduction",
             "contractorPercent",
             "canChangeContractorPay",
+            "canApproveLeave",
             "passwordConfigured",
             "hireDate",
             "availableVacationDays",
@@ -155,6 +158,7 @@ class HubUserSerializer(serializers.ModelSerializer):
                     "suppliesDeduction",
                     "contractorPercent",
                     "canChangeContractorPay",
+                    "canApproveLeave",
                 ):
                     data.pop(key, None)
                 for key in ("email", "phone", "hireDate", "availableVacationDays"):
@@ -299,6 +303,7 @@ class HubFormSubmissionSerializer(serializers.ModelSerializer):
 class HubLeaveApprovalSerializer(serializers.ModelSerializer):
     submission_id = serializers.UUIDField(read_only=True)
     vacation_summary = serializers.SerializerMethodField()
+    affected_visits = serializers.SerializerMethodField()
 
     class Meta:
         model = HubLeaveApproval
@@ -311,6 +316,7 @@ class HubLeaveApprovalSerializer(serializers.ModelSerializer):
             "jobber_sync_error",
             "vacation_days_deducted",
             "vacation_summary",
+            "affected_visits",
             "created_at",
             "updated_at",
         ]
@@ -321,9 +327,21 @@ class HubLeaveApprovalSerializer(serializers.ModelSerializer):
             "jobber_sync_error",
             "vacation_days_deducted",
             "vacation_summary",
+            "affected_visits",
             "created_at",
             "updated_at",
         ]
+
+    def get_affected_visits(self, obj):
+        """Only while a decision is still useful: pending or approved requests."""
+        from .services.leave_request import affected_visits_for_parsed, parse_leave_submission
+
+        if obj.status == HubLeaveApproval.Status.REJECTED:
+            return []
+        try:
+            return affected_visits_for_parsed(parse_leave_submission(obj.submission))
+        except Exception:
+            return []
 
     def get_vacation_summary(self, obj):
         from .services.leave_request import parse_leave_submission, vacation_summary_for_parsed

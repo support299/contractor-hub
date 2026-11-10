@@ -38,6 +38,7 @@ export interface HubUser {
   suppliesDeduction?: number;
   contractorPercent?: number | null;
   canChangeContractorPay?: boolean;
+  canApproveLeave?: boolean;
   passwordConfigured?: boolean;
   hireDate?: string | null;
   availableVacationDays?: number;
@@ -79,6 +80,7 @@ function normalize(u: Record<string, unknown>): HubUser {
     suppliesDeduction: num(u.suppliesDeduction),
     contractorPercent: num(u.contractorPercent),
     canChangeContractorPay: Boolean(u.canChangeContractorPay),
+    canApproveLeave: Boolean(u.canApproveLeave),
     passwordConfigured: Boolean(u.passwordConfigured),
     hireDate: (u.hireDate as string) || undefined,
     availableVacationDays: num(u.availableVacationDays),

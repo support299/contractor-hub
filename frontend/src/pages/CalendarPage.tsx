@@ -37,6 +37,7 @@ import {
   retryJobberSync,
   type ApprovalStatus,
   type LeaveApproval,
+  type AffectedVisit,
   type VacationSummary,
 } from "@/lib/leave-store";
 import {
@@ -115,6 +116,30 @@ function colorFor(name: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
+/** Jobber visits the person is booked on during the leave: the coverage impact of approving. */
+function AffectedVisits({ visits }: { visits?: AffectedVisit[] }) {
+  if (!visits || visits.length === 0) return null;
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px]">
+      <div className="font-medium text-amber-900 mb-1">
+        {visits.length} visit{visits.length === 1 ? "" : "s"} to cover
+      </div>
+      <ul className="space-y-0.5 text-amber-900/90">
+        {visits.map((v) => (
+          <li key={v.jobber_visit_id} className="flex justify-between gap-2">
+            <span className="truncate">
+              {fmtNice(v.date)} · {v.client_name || v.job_title || "Visit"}
+            </span>
+            <span className="shrink-0 text-amber-800/70">
+              {v.headcount > 1 ? `${v.headcount} people` : "alone"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function VacationBanner({ summary }: { summary?: VacationSummary | null }) {
   if (!summary || summary.leave_type !== "Vacation") return null;
   return (
@@ -171,7 +196,9 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 export default function CalendarPage() {
   useDocumentTitle("Calendar");
   const session = useSession();
-  const canApprove = isAdminSession(session);
+  const isAdmin = isAdminSession(session);
+  // Admins, plus staff with the "Can approve time off" switch (e.g. the office manager).
+  const canApprove = isAdmin || Boolean(session?.canApproveLeave);
   const forms = useForms();
   const leaveForm = useMemo(
     () => forms.find((f) => f.slug === LEAVE_FORM_SLUG),
@@ -225,7 +252,7 @@ export default function CalendarPage() {
       for (const a of approvalList) appMap[a.submission_id] = a;
       // Backfill missing approvals (e.g. older submissions created before this form was tracked)
       const missing = subs.filter((s) => !appMap[s.id]);
-      if (missing.length > 0 && isAdminSession()) {
+      if (missing.length > 0 && canApprove) {
         const created = await Promise.all(
           missing.map((s) => ensureLeaveApproval(s.id).catch(() => null)),
         );
@@ -426,7 +453,7 @@ export default function CalendarPage() {
             </h1>
             <Button className="h-8 gap-2 sm:ml-2" size="sm" onClick={() => setSubmitOpen(true)}>
               <FilePlus className="h-4 w-4" />
-              {canApprove ? "Submit Record" : "Request time off"}
+              {isAdmin ? "Submit Record" : "Request time off"}
             </Button>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -643,6 +670,7 @@ export default function CalendarPage() {
                 </div>
               )}
               <VacationBanner summary={approvals[r.submission.id]?.vacation_summary} />
+              {canApprove ? <AffectedVisits visits={approvals[r.submission.id]?.affected_visits} /> : null}
               {approvals[r.submission.id]?.jobber_sync_error ? (
                 <div className="text-[11px] text-rose-700">
                   Jobber: {approvals[r.submission.id].jobber_sync_error}
@@ -709,15 +737,17 @@ export default function CalendarPage() {
                       : "Reject"}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                  disabled={busyId === r.submission.id}
-                  onClick={() => setConfirmDelete(r)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                {isAdmin ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                    disabled={busyId === r.submission.id}
+                    onClick={() => setConfirmDelete(r)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
               </div>
               ) : null}
             </div>
@@ -726,10 +756,10 @@ export default function CalendarPage() {
       </div>
 
       <FormSubmitDialog
-        slug={canApprove ? ABSENCE_FORM_SLUG : LEAVE_FORM_SLUG}
+        slug={isAdmin ? ABSENCE_FORM_SLUG : LEAVE_FORM_SLUG}
         open={submitOpen}
         onOpenChange={setSubmitOpen}
-        title={canApprove ? "New Absence" : "Request time off"}
+        title={isAdmin ? "New Absence" : "Request time off"}
         onSubmitted={() => {
           if (leaveForm) {
             fetchSubmissions(leaveForm.id).then(setSubmissions);
@@ -781,7 +811,7 @@ export default function CalendarPage() {
             <Button variant="outline" onClick={() => setConfirmDelete(null)} disabled={deleting}>
               Close
             </Button>
-            {canApprove ? (
+            {isAdmin ? (
             <Button
               variant="destructive"
               disabled={deleting}

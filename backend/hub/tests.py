@@ -132,7 +132,7 @@ class LeaveNotificationTests(TestCase):
         n = qs.get()
         self.assertEqual(n.recipient_id, self.admin.id)
         self.assertIn("Jane Doe submitted a Vacation request (Aug 10–17)", n.body)
-        self.assertEqual(n.link, "/admin/calendar")
+        self.assertEqual(n.link, f"/admin/calendar?request={sub.id}")
 
     @patch("hub.services.notify_email.send_conversation_email", return_value=True)
     def test_approve_notifies_employee_once(self, mock_send):
@@ -370,6 +370,10 @@ class LockInPositionAmountTests(SimpleTestCase):
 from rest_framework.test import APIClient as _APIClient
 
 
+from django.test import override_settings as _override_settings
+
+
+@_override_settings(HUB_INTERNAL_SECRET="s3cret")
 class LockInFlowTests(TestCase):
     def setUp(self):
         from hub.models import HubUser
@@ -386,7 +390,13 @@ class LockInFlowTests(TestCase):
             position="Team Leader",
             jobber_id="jb_user_2",
         )
-        self.client_api = _APIClient()
+        self.client_api = _APIClient(HTTP_X_INTERNAL_SECRET="s3cret")
+
+    def test_internal_endpoints_need_the_secret(self):
+        anon = _APIClient()
+        self.assertEqual(anon.post("/api/internal/lock-in/visits/upsert/", {}, format="json").status_code, 403)
+        wrong = _APIClient(HTTP_X_INTERNAL_SECRET="nope")
+        self.assertEqual(wrong.get("/api/internal/lock-in/users/?jobber_id=x").status_code, 403)
 
     def test_upsert_visit_and_stage1_idempotent(self):
         up = self.client_api.post(
@@ -2301,3 +2311,67 @@ class LeaveExportCoverageTests(TestCase):
                 }
             ],
         )
+
+
+class ApproveLeavePermissionTests(TestCase):
+    """Peter: the office manager approves time off without full admin access."""
+
+    def setUp(self):
+        from hub.models import HubForm, HubFormSubmission, HubLeaveApproval, HubPayVisit, HubUser
+        from hub.services.auth import tokens_for_hub_user
+
+        self.cassidy = HubUser.objects.create(
+            name="Cassidy", email="cassidy@test.local", role=HubUser.Role.EMPLOYEE, can_approve_leave=True
+        )
+        self.plain = HubUser.objects.create(name="Plain", email="plain@test.local", role=HubUser.Role.EMPLOYEE)
+        self.jane = HubUser.objects.create(name="Jane", role=HubUser.Role.EMPLOYEE, jobber_id="J-JANE")
+        form = HubForm.objects.create(name="Request Time Off", slug="request-time-off", fields=LEAVE_FIELDS)
+        sub = HubFormSubmission.objects.create(
+            form=form, answers={"u": [str(self.jane.id)], "s": "2026-11-20", "e": "2026-11-21", "t": "Vacation"}
+        )
+        self.approval = HubLeaveApproval.objects.create(submission=sub)
+        v = HubPayVisit.objects.create(
+            jobber_visit_id="V1", visit_date=date(2026, 11, 20), status="UPCOMING",
+            client_name="Globe", assigned_user_ids=["J-JANE"],
+        )
+        v.assignees.set([self.jane])
+
+        def client_for(user):
+            c = _APIClient()
+            c.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens_for_hub_user(user)['access']}")
+            return c
+
+        self.as_cassidy = client_for(self.cassidy)
+        self.as_plain = client_for(self.plain)
+        self.sub_id = str(sub.id)
+
+    def test_switch_holder_sees_all_requests_and_can_approve(self):
+        from hub.services.auth import tokens_for_hub_user
+
+        self.assertTrue(tokens_for_hub_user(self.cassidy)["user"]["canApproveLeave"])
+        self.assertFalse(tokens_for_hub_user(self.plain)["user"]["canApproveLeave"])
+
+        rows = self.as_cassidy.get("/api/leave-approvals/").json()
+        self.assertEqual([r["submission_id"] for r in rows], [self.sub_id])
+        self.assertEqual(rows[0]["affected_visits"][0]["client_name"], "Globe")
+        # The request itself (the form submission) is visible too.
+        subs = self.as_cassidy.get("/api/submissions/").json()
+        self.assertIn(self.sub_id, [s["id"] for s in subs])
+
+        r = self.as_cassidy.patch(f"/api/leave-approvals/{self.sub_id}/", {"status": "rejected"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["affected_visits"], [])  # nothing to cover once rejected
+
+    def test_plain_staff_cannot_see_or_decide(self):
+        self.assertEqual(self.as_plain.get("/api/leave-approvals/").json(), [])
+        r = self.as_plain.patch(f"/api/leave-approvals/{self.sub_id}/", {"status": "approved"}, format="json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_new_request_notifies_switch_holder(self):
+        from hub.models import HubNotification
+        from hub.services.leave_notify import notify_leave_submitted
+
+        notify_leave_submitted(self.approval.submission)
+        n = HubNotification.objects.get(recipient=self.cassidy)
+        self.assertEqual(n.link, f"/admin/calendar?request={self.sub_id}")
+        self.assertFalse(HubNotification.objects.filter(recipient=self.plain).exists())

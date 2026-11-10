@@ -16,7 +16,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { clearAuth, isAdminSession } from "@/lib/api";
+import { clearAuth, isAdminSession, refreshSession } from "@/lib/api";
 import { useSession } from "@/lib/hub-store";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,9 @@ export default function AdminLayout() {
   const [searchParams] = useSearchParams();
   const [navOpen, setNavOpen] = useState(false);
   const roleLabel = (session?.role || "staff").toUpperCase();
+  useEffect(() => {
+    void refreshSession();
+  }, []);
   const navItems = [
     { to: "/admin/dashboard", label: "Dashboard" },
     ...(admin ? [{ to: "/admin/quick-entry", label: "Quick Entry" }] : []),
