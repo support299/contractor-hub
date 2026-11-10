@@ -185,6 +185,9 @@ def vacation_summary_for_parsed(parsed: dict, on_date: date | None = None) -> di
 
 
 _UNSCHEDULED_STATUSES = {"deleted", "cancelled", "canceled"}
+# Jobs billed to the company itself ("CLEAN ON THE GO INC.": Team Leader tasks etc.)
+# are internal time, not client visits someone has to cover.
+_COMPANY_CLIENT_RE = r"^\s*clean on the go(\s+inc\.?)?\s*$"
 
 
 def affected_visits_for_parsed(parsed: dict) -> list[dict]:
@@ -199,6 +202,8 @@ def affected_visits_for_parsed(parsed: dict) -> list[dict]:
         HubPayVisit.objects.filter(assignees=user, visit_date__gte=start, visit_date__lte=end or start)
         .exclude(status__in=_UNSCHEDULED_STATUSES)
         .exclude(status__iexact="COMPLETED")
+        .exclude(internal=True)
+        .exclude(client_name__iregex=_COMPANY_CLIENT_RE)
         .order_by("visit_date", "client_name")
     )
     return [

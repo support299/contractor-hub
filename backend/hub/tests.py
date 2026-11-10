@@ -2335,6 +2335,16 @@ class ApproveLeavePermissionTests(TestCase):
             client_name="Globe", assigned_user_ids=["J-JANE"],
         )
         v.assignees.set([self.jane])
+        # Internal company jobs (Team Leader tasks) never count as visits to cover.
+        for i, (client, internal) in enumerate(
+            [("CLEAN ON THE GO INC.", False), ("Clean on the Go", False), ("Acme", True)]
+        ):
+            iv = HubPayVisit.objects.create(
+                jobber_visit_id=f"TL{i}", visit_date=date(2026, 11, 20), status="UPCOMING",
+                client_name=client, job_title="Team Leader tasks (Jane)", internal=internal,
+                assigned_user_ids=["J-JANE"],
+            )
+            iv.assignees.set([self.jane])
 
         def client_for(user):
             c = _APIClient()
@@ -2353,7 +2363,7 @@ class ApproveLeavePermissionTests(TestCase):
 
         rows = self.as_cassidy.get("/api/leave-approvals/").json()
         self.assertEqual([r["submission_id"] for r in rows], [self.sub_id])
-        self.assertEqual(rows[0]["affected_visits"][0]["client_name"], "Globe")
+        self.assertEqual([v["client_name"] for v in rows[0]["affected_visits"]], ["Globe"])
         # The request itself (the form submission) is visible too.
         subs = self.as_cassidy.get("/api/submissions/").json()
         self.assertIn(self.sub_id, [s["id"] for s in subs])
