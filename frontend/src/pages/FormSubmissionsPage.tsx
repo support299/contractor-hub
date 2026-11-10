@@ -431,7 +431,7 @@ function EditSubmissionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto relative">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit submission</DialogTitle>
         </DialogHeader>
