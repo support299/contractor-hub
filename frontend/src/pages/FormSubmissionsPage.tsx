@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Pencil, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +87,17 @@ export default function FormSubmissionsPage() {
   const [dateTo, setDateTo] = useState("");
   const [filters, setFilters] = useState<Record<string, FieldFilter>>({});
   const [editing, setEditing] = useState<FormSubmission | null>(null);
+  // ?edit=<submission_id> opens that record's edit dialog (deep link from Insights).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editParam = searchParams.get("edit");
+  const closeEditor = () => {
+    setEditing(null);
+    if (editParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("edit");
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -105,6 +116,15 @@ export default function FormSubmissionsPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formId]);
+
+  useEffect(() => {
+    if (loading || !editParam) return;
+    const target = submissions.find((s) => s.id === editParam);
+    if (target) setEditing(target);
+    else toast.error("That record no longer exists.");
+    // Only when loading finishes or the link changes, not on every list update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, editParam]);
 
   const answerFields = useMemo(
     () => (form?.fields ?? []).filter(isAnswerField),
@@ -351,13 +371,13 @@ export default function FormSubmissionsPage() {
       {form && (
         <EditSubmissionDialog
           open={!!editing}
-          onOpenChange={(o) => !o && setEditing(null)}
+          onOpenChange={(o) => !o && closeEditor()}
           submission={editing}
           form={form}
           users={users}
           onSaved={(updated) => {
             setSubmissions((list) => list.map((x) => (x.id === updated.id ? updated : x)));
-            setEditing(null);
+            closeEditor();
           }}
         />
       )}

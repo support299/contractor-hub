@@ -22,6 +22,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import FormsPage from "@/pages/FormsPage";
 import QuickEntryPage from "@/pages/QuickEntryPage";
 import FormSubmissionsPage from "@/pages/FormSubmissionsPage";
+import SubmissionRedirectPage from "@/pages/SubmissionRedirectPage";
 import PublicFormPage from "@/pages/PublicFormPage";
 import LoginPage from "@/pages/LoginPage";
 import SetPasswordPage from "@/pages/SetPasswordPage";
@@ -64,6 +65,7 @@ export default function App() {
                   <Route path="settings" element={<SettingsPage />} />
                   <Route path="forms" element={<FormsPage />} />
                   <Route path="forms/:formId/submissions" element={<FormSubmissionsPage />} />
+                  <Route path="submissions/:submissionId" element={<SubmissionRedirectPage />} />
                 </Route>
               </Route>
             </Route>
