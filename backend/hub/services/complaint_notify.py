@@ -87,19 +87,19 @@ def staff_from_complaint(submission: HubFormSubmission) -> list[HubUser]:
     return [u for u in users if u.role not in _SKIP_ROLES]
 
 
-def _submissions_path(form: HubForm) -> str:
-    return f"/admin/forms/{form.id}/submissions"
+def _complaint_line(client: str, kind: str) -> str:
+    """Peter's wording: "A client submitted a complaint: <client> — <type>." """
+    if client and kind:
+        return f"A client submitted a complaint: {client} — {kind}."
+    if client:
+        return f"A client submitted a complaint: {client}."
+    if kind:
+        return f"A client submitted a complaint ({kind})."
+    return "A client submitted a complaint."
 
 
 def _office_body(client: str, kind: str, responsible: list[HubUser]) -> str:
-    if client and kind:
-        body = f"{client}: {kind}."
-    elif client:
-        body = f"A client complaint was submitted for {client}."
-    elif kind:
-        body = f"A client complaint was submitted ({kind})."
-    else:
-        body = "A client complaint was submitted."
+    body = _complaint_line(client, kind)
     names = ", ".join((u.name or "").strip() for u in responsible if (u.name or "").strip())
     if names:
         body = f"{body} Responsible: {names}."
@@ -107,20 +107,15 @@ def _office_body(client: str, kind: str, responsible: list[HubUser]) -> str:
 
 
 def _staff_body(client: str, kind: str) -> str:
-    if client and kind:
-        return f"A client complaint includes you: {client} — {kind}."
-    if client:
-        return f"A client complaint for {client} includes you."
-    if kind:
-        return f"A client complaint includes you ({kind})."
-    return "A client complaint includes you."
+    return _complaint_line(client, kind)
 
 
 def _notify_office(submission: HubFormSubmission, form: HubForm, body: str, payload: dict) -> None:
     from hub.services.notify_email import send_designated_notification_emails
     from hub.services.notify_sms import send_designated_notification_sms
 
-    link = _submissions_path(form)
+    # Opens this complaint's edit box directly (admins), ready to mark resolved.
+    link = f"/admin/submissions/{submission.id}"
     title = "New client complaint"
     admins = HubUser.objects.filter(
         role=HubUser.Role.ADMIN,

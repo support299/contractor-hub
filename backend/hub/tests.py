@@ -1057,13 +1057,13 @@ class ComplaintNotifyTests(TestCase):
         by_recipient = {n.recipient_id: n for n in notes}
         self.assertEqual(
             by_recipient[self.admin.id].body,
-            "Jane Client: Missed Areas. Responsible: Pat Lead, Boss.",
+            "A client submitted a complaint: Jane Client — Missed Areas. Responsible: Pat Lead, Boss.",
         )
+        self.assertEqual(by_recipient[self.admin.id].link, f"/admin/submissions/{sub.id}")
         self.assertEqual(
-            by_recipient[self.admin.id].link,
-            f"/admin/forms/{self.form.id}/submissions",
+            by_recipient[self.tech.id].body,
+            "A client submitted a complaint: Jane Client — Missed Areas.",
         )
-        self.assertIn("includes you", by_recipient[self.tech.id].body)
         self.assertEqual(
             by_recipient[self.tech.id].link,
             f"/admin/dashboard?user={self.tech.id}",
