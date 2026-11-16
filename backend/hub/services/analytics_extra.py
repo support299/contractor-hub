@@ -52,6 +52,7 @@ _STATUS = re.compile(r"^\s*status\s*$", re.I)
 _RESOLVED_DATE = re.compile(r"resolved\s*date|date resolved|resolution date", re.I)
 _TEAM_LEADER = re.compile(r"^\s*team\s*leader\s*$", re.I)
 _LATE_TYPE = re.compile(r"\blate\b", re.I)
+_SICK_TYPE = re.compile(r"\bsick\b", re.I)
 
 
 class _Form:
@@ -440,21 +441,30 @@ def build_work_hours_section(from_date: date | None, to_date: date | None) -> di
     }
 
 
-def build_late_arrivals_section(from_date: date | None, to_date: date | None) -> dict:
-    """One record per employee per late arrival logged on the New Absence form.
+def _absence_type(label: str) -> str:
+    """late / sick / absent. Anything that is neither Late nor Sick (Absent, No show,
+    blank...) counts as absent, the same rule the Hub dashboard uses."""
+    if _LATE_TYPE.search(label):
+        return "late"
+    if _SICK_TYPE.search(label):
+        return "sick"
+    return "absent"
 
-    The period filter uses the date of the late arrival, not when it was logged. A
-    submission with no date falls back to the day it was submitted.
-    """
+
+def _absence_records(from_date: date | None, to_date: date | None, *, late_only: bool) -> list[dict]:
+    """One record per employee per New Absence entry, filtered by the date of the
+    absence (not when it was logged). No date falls back to the day it was submitted."""
     staff = _Staff()
     records: list[dict] = []
 
     for sub in _submissions((ABSENCE_SLUG,), None, None):
         form, a = _Form(sub.form), sub.answers or {}
-        if not _LATE_TYPE.search(form.text(a, "f_vxzb7cc6")):
+        label = form.text(a, "f_vxzb7cc6")
+        kind = _absence_type(label)
+        if late_only and kind != "late":
             continue
-        late_on = form.date(a, "f_4a12y9ll") or sub.created_at.date().isoformat()
-        day = date.fromisoformat(late_on)
+        on = form.date(a, "f_4a12y9ll") or sub.created_at.date().isoformat()
+        day = date.fromisoformat(on)
         if (from_date and day < from_date) or (to_date and day > to_date):
             continue
         employees = staff.resolve(form.raw(a, "f_rhfm17h9")) or [
@@ -465,7 +475,9 @@ def build_late_arrivals_section(from_date: date | None, to_date: date | None) ->
                 {
                     "id": f"{sub.id}:{employee['id'] or employee['name']}",
                     "submission_id": str(sub.id),
-                    "date": late_on,
+                    "date": on,
+                    "type": kind,
+                    "type_label": label,
                     "employee_id": employee["id"],
                     "employee_name": employee["name"],
                     "jobber_user_id": employee["jobber_user_id"],
@@ -475,11 +487,32 @@ def build_late_arrivals_section(from_date: date | None, to_date: date | None) ->
             )
 
     records.sort(key=lambda r: (r["date"], r["employee_name"]), reverse=True)
+    return records
+
+
+def build_late_arrivals_section(from_date: date | None, to_date: date | None) -> dict:
+    """One record per employee per late arrival logged on the New Absence form."""
+    records = _absence_records(from_date, to_date, late_only=True)
     return {
         "available": True,
         "source": "New Absence form, type Late",
         "summary": {
             "total": len(records),
+            "by_employee": _count_by(records, "employee_name"),
+        },
+        "records": records,
+    }
+
+
+def build_absences_section(from_date: date | None, to_date: date | None) -> dict:
+    """Every New Absence entry (late, sick, absent), one record per employee, with type."""
+    records = _absence_records(from_date, to_date, late_only=False)
+    return {
+        "available": True,
+        "source": "New Absence form, all types",
+        "summary": {
+            "total": len(records),
+            "by_type": _count_by(records, "type"),
             "by_employee": _count_by(records, "employee_name"),
         },
         "records": records,
@@ -513,4 +546,6 @@ def build_extra_sections(from_date: date | None, to_date: date | None) -> dict[s
         "service_cancellations": build_cancellations_section(from_date, to_date),
         "work_hours": build_work_hours_section(from_date, to_date),
         "late_arrivals": build_late_arrivals_section(from_date, to_date),
+        # Not "absences": that top-level key is the time-off requests of type Absent.
+        "absence_log": build_absences_section(from_date, to_date),
     }

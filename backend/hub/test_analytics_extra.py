@@ -7,6 +7,7 @@ from hub.models import HubForm, HubFormSubmission, HubUser, HubWorkHours
 from hub.services.analytics_extra import (
     build_cancellations_section,
     build_complaints_section,
+    build_absences_section,
     build_late_arrivals_section,
     build_reviews_section,
     build_work_hours_section,
@@ -145,6 +146,26 @@ class ExtraSectionsTests(TestCase):
             (rec["date"], rec["employee_name"], rec["jobber_user_id"], rec["comment"]),
             ("2026-10-05", "Ana", "J-ANA", "Traffic"),
         )
+        self.assertEqual(rec["type"], "late")
+
+        # Absences: every type, same shape, filtered by the absence date.
+        allx = build_absences_section(None, None)
+        self.assertEqual(allx["summary"]["total"], 5)
+        self.assertEqual(allx["summary"]["by_type"], {"late": 3, "sick": 1, "absent": 1})
+        early = build_absences_section(date(2026, 10, 6), date(2026, 10, 7))
+        self.assertEqual(
+            sorted((r["date"], r["type"], r["type_label"], r["employee_name"]) for r in early["records"]),
+            [("2026-10-06", "sick", "Sick", "Ben"), ("2026-10-07", "absent", "Absent", "Ben")],
+        )
+
+        # In the full export it is "absence_log"; the existing "absences" key (time-off
+        # requests of type Absent) must stay as it was.
+        from hub.services.analytics import build_analytics_payload
+
+        payload = build_analytics_payload()
+        self.assertEqual(payload["absence_log"]["summary"]["total"], 5)
+        self.assertEqual(payload["absences"], payload["leave"]["absences"])
+        self.assertIn("records", payload["absences"])
 
     def test_cancellation_sub_reasons_merged(self):
         form = _form(

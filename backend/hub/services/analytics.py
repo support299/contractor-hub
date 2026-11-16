@@ -660,7 +660,8 @@ def build_analytics_payload(
                     "Not tracked as clock-in/out. Use leave absences + visits as proxies."
                 ),
                 "late_arrivals": (
-                    "From the New Absence form (type Late). Counts only what the team logs."
+                    "From the New Absence form (type Late). Counts only what the team logs. "
+                    "absence_log has every New Absence entry (late, sick, absent) with its type."
                 ),
                 "internal_ratings_feedback": "Not implemented in this app yet.",
                 "custom_kpis": "Computed KPIs from existing data; no custom KPI builder yet.",
