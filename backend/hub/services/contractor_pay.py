@@ -182,6 +182,9 @@ def _visit_rows(visits, rules, overrides) -> list[dict]:
                 "client_name": v.client_name,
                 "job_title": v.job_title,
                 "visit_status": v.status,
+                # Pay and tips are divided by this: everyone on the visit, not only contractors.
+                "headcount": headcount,
+                "team": sorted(u.name for u in assignees),
             }
             key = f"{v.jobber_visit_id}:{c.id}"
             rows.append(
@@ -238,6 +241,18 @@ def _deduction_row(row_id: str, kind: str, user: HubUser, day: date, amount: Dec
         "note": note,
         "flags": [],
     }
+
+
+def _with_people(row: dict, live: dict[str, dict]) -> dict:
+    """Weeks paid before rows carried headcount/team: display-only, so fill them in.
+    The count is the one the pay was split by (frozen basis), names come from the visit."""
+    if "headcount" in row:
+        return row
+    current = live.get(row["id"]) or {}
+    headcount = (row.get("basis") or {}).get("headcount") or current.get("headcount")
+    if not headcount:
+        return row
+    return {**row, "headcount": headcount, "team": current.get("team", [])}
 
 
 def build_rows(from_date: date | None, to_date: date | None) -> list[dict]:
@@ -320,8 +335,12 @@ def build_rows(from_date: date | None, to_date: date | None) -> list[dict]:
         if ws in frozen:
             continue
         out.append({**r, "week_start": ws.isoformat(), "week_paid": False})
+    live = {r["id"]: r for r in rows}
     for w in frozen.values():
-        out.extend({**r, "week_start": w.week_start.isoformat(), "week_paid": True} for r in w.rows)
+        out.extend(
+            {**_with_people(r, live), "week_start": w.week_start.isoformat(), "week_paid": True}
+            for r in w.rows
+        )
 
     out = [
         r

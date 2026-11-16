@@ -75,6 +75,8 @@ class ContractorPayTests(TestCase):
         self.assertEqual(pay_row["amount_paid"], "15.00")  # 200 × 30% ÷ 4
         self.assertEqual(pay_row["pay_rule"], "percent")
         self.assertEqual(self._rows(type="tip")[0]["amount_paid"], "5.00")  # 20 ÷ 4
+        # The page shows who is on the visit: 4 people, 2 of them not in the Hub.
+        self.assertEqual((pay_row["headcount"], pay_row["team"]), (4, ["Cara", "Emp"]))
 
     def test_highest_percent_after_discount_split_between_contractors(self, _today):
         self._visit("V1", [self.cara, self.dan], discount_share=Decimal("20"))
@@ -150,6 +152,19 @@ class ContractorPayTests(TestCase):
         body = {"visit_id": str(v.id), "contractor_id": str(self.cara.id), "amount": "1", "reason": "x"}
         self.assertEqual(_client(self.peter).post("/api/contractor-pay/overrides/", body, format="json").status_code, 400)
         self.assertEqual(_client(self.peter).post(f"/api/contractor-pay/weeks/{WEEK}/paid/").status_code, 400)
+
+    def test_weeks_paid_before_people_column_still_show_people(self, _today):
+        from hub.models import HubPayWeek
+
+        self._visit("V1", [self.cara, self.dan], extra_ids=["J-X"])
+        _client(self.peter).post(f"/api/contractor-pay/weeks/{WEEK}/paid/")
+        # Simulate a week frozen before rows carried headcount/team.
+        week = HubPayWeek.objects.get(week_start=WEEK)
+        week.rows = [{k: v for k, v in r.items() if k not in ("headcount", "team")} for r in week.rows]
+        week.save()
+        row = self._rows(type="pay", contractor_name="Cara")[0]
+        self.assertTrue(row["week_paid"])
+        self.assertEqual((row["headcount"], row["team"]), (3, ["Cara", "Dan"]))
 
     def test_cannot_pay_week_while_a_contractor_has_no_percent(self, _today):
         self.dan.contractor_percent = None

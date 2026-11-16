@@ -14,6 +14,8 @@ export type PayRow = {
   client_name?: string;
   job_title?: string;
   visit_status?: string;
+  headcount?: number;
+  team?: string[];
   visit_amount?: string;
   discount_share?: string;
   calculated_amount: string;

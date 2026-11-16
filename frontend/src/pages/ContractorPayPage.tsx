@@ -270,6 +270,7 @@ export default function ContractorPayPage() {
                     <TableHead>Date</TableHead>
                     <TableHead>Contractor</TableHead>
                     <TableHead>What</TableHead>
+                    <TableHead>People</TableHead>
                     <TableHead>Rule</TableHead>
                     <TableHead className="text-right">Calculated</TableHead>
                     <TableHead className="text-right">Paid</TableHead>
@@ -300,6 +301,9 @@ export default function ContractorPayPage() {
                             ))}
                           </div>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <PeopleCell row={r} />
                       </TableCell>
                       <TableCell>{r.pay_rule ? RULE_LABELS[r.pay_rule] : ""}</TableCell>
                       <TableCell className="text-right">{money(r.calculated_amount)}</TableCell>
@@ -333,7 +337,7 @@ export default function ContractorPayPage() {
                   ))}
                   {rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
                         Nothing this week.
                       </TableCell>
                     </TableRow>
@@ -721,5 +725,25 @@ function ChangeLog() {
         </ul>
       )}
     </section>
+  );
+}
+
+/** How many people are on the visit (pay is split between them) and who they are. */
+function PeopleCell({ row }: { row: PayRow }) {
+  if (!row.headcount) return null;
+  const team = row.team ?? [];
+  const others = row.headcount - team.length;
+  return (
+    <div className="min-w-[7rem]">
+      <div className="font-medium">
+        {row.headcount} {row.headcount === 1 ? "person" : "people"}
+      </div>
+      {row.headcount > 1 && (
+        <div className="text-xs text-muted-foreground">
+          {team.join(", ")}
+          {others > 0 ? `${team.length ? " + " : ""}${others} not in Hub` : ""}
+        </div>
+      )}
+    </div>
   );
 }
