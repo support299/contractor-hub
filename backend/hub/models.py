@@ -806,6 +806,24 @@ class HubPayAdjustment(TimeStampedModel):
         ordering = ["-date"]
 
 
+class HubPayEmail(TimeStampedModel):
+    """One attempt to email a contractor their pay for a paid week (sent through GHL)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    week = models.ForeignKey(HubPayWeek, on_delete=models.CASCADE, related_name="emails")
+    contractor = models.ForeignKey(HubUser, on_delete=models.CASCADE, related_name="pay_emails")
+    to_email = models.EmailField()
+    subject = models.CharField(max_length=255)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    ok = models.BooleanField(default=False)
+    sent_by = models.ForeignKey(
+        HubUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class HubPayChangeLog(models.Model):
     """Who changed what in contractor pay, and when."""
 

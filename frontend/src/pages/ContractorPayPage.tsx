@@ -36,15 +36,21 @@ import {
   deleteOverride,
   deleteRestock,
   fetchClientRules,
+  fetchPayEmails,
   fetchPayLog,
   fetchPayWeek,
   FLAG_LABELS,
   markWeekPaid,
+  previewPayEmail,
   RULE_LABELS,
   saveClientRule,
   saveOverride,
+  sendPayEmail,
   TYPE_LABELS,
   type ClientRules,
+  type PayEmailPreview,
+  type PayEmails,
+  type PayEmailStatus,
   type PayLogEntry,
   type PayRow,
   type PayWeek,
@@ -89,6 +95,7 @@ export default function ContractorPayPage() {
   const [contractorId, setContractorId] = useState("all");
   const [editing, setEditing] = useState<PayRow | null>(null);
   const [paying, setPaying] = useState(false);
+  const [emailsOpen, setEmailsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -197,6 +204,11 @@ export default function ContractorPayPage() {
           {editable && data.week_over && (
             <Button className="ml-auto" disabled={paying} onClick={payWeek}>
               Mark week paid
+            </Button>
+          )}
+          {data.paid && (
+            <Button className="ml-auto" variant="outline" onClick={() => setEmailsOpen(true)}>
+              Pay emails
             </Button>
           )}
         </div>
@@ -355,6 +367,7 @@ export default function ContractorPayPage() {
       <ChangeLog />
 
       <OverrideDialog row={editing} onClose={() => setEditing(null)} onSaved={load} />
+      {emailsOpen && data?.paid && <PayEmailsDialog week={data} onClose={() => setEmailsOpen(false)} />}
     </div>
   );
 }
@@ -745,5 +758,222 @@ function PeopleCell({ row }: { row: PayRow }) {
         </div>
       )}
     </div>
+  );
+}
+
+function fmtSent(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void }) {
+  const [data, setData] = useState<PayEmails | null>(null);
+  const [preview, setPreview] = useState<(PayEmailPreview & { contractor: PayEmailStatus }) | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const canSend = week.can_edit;
+
+  const load = useCallback(async () => {
+    try {
+      setData(await fetchPayEmails(week.week_start));
+    } catch (err) {
+      toast.error(errorText(err, "Could not load pay emails"));
+    }
+  }, [week.week_start]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const open = async (c: PayEmailStatus) => {
+    setBusy(`preview:${c.contractor_id}`);
+    try {
+      setPreview({ ...(await previewPayEmail(week.week_start, c.contractor_id)), contractor: c });
+    } catch (err) {
+      toast.error(errorText(err, "Could not load the email"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const sendOne = async (c: PayEmailStatus, test = false) => {
+    if (!test && c.sent_at && !confirm(`${c.contractor_name} already got this email. Send it again?`)) return;
+    setBusy(test ? "test" : c.contractor_id);
+    try {
+      await sendPayEmail(week.week_start, c.contractor_id, test);
+      toast.success(test ? "Test sent to your email" : `Sent to ${c.contractor_name}`);
+      if (!test) {
+        setPreview(null);
+        load();
+      }
+    } catch (err) {
+      toast.error(errorText(err, "Could not send"));
+      if (!test) load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const pending = (data?.contractors ?? []).filter((c) => c.email && !c.sent_at);
+  const noEmail = (data?.contractors ?? []).filter((c) => !c.email);
+  const sendingAll = Boolean(busy?.startsWith("all:"));
+
+  const sendAll = async () => {
+    if (!pending.length) return;
+    const skip = noEmail.length ? ` ${noEmail.length} without an email will be skipped.` : "";
+    if (!confirm(`Send the pay email to ${pending.length} contractor(s)?${skip}`)) return;
+    let sent = 0;
+    const failed: string[] = [];
+    for (const [i, c] of pending.entries()) {
+      setBusy(`all:${i + 1}/${pending.length}`);
+      try {
+        await sendPayEmail(week.week_start, c.contractor_id);
+        sent += 1;
+      } catch {
+        failed.push(c.contractor_name);
+      }
+    }
+    setBusy(null);
+    if (failed.length) toast.error(`Sent ${sent}. Not sent: ${failed.join(", ")}`);
+    else toast.success(`Sent ${sent} pay email(s)`);
+    load();
+  };
+
+  const range = `${fmtDate(week.week_start)} – ${fmtDate(week.week_end)}`;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !sendingAll && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Pay emails · {range}</DialogTitle>
+          <DialogDescription>
+            Sent through GHL{data?.from ? ` from ${data.from}` : ""}. Each email also shows in the
+            contractor's GHL conversation.
+          </DialogDescription>
+        </DialogHeader>
+
+        {preview ? (
+          <div className="space-y-3">
+            <div className="text-sm space-y-1">
+              <div>
+                <span className="text-muted-foreground">To:</span>{" "}
+                {preview.to || <span className="text-amber-700">no email in the Hub</span>}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Subject:</span> {preview.subject}
+              </div>
+            </div>
+            <iframe
+              title="Email preview"
+              sandbox=""
+              srcDoc={preview.html}
+              className="w-full h-[55vh] rounded border bg-white"
+            />
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                className="sm:mr-auto"
+                disabled={Boolean(busy)}
+                onClick={() => setPreview(null)}
+              >
+                Back
+              </Button>
+              {canSend && (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={Boolean(busy)}
+                    onClick={() => sendOne(preview.contractor, true)}
+                  >
+                    {busy === "test" ? "Sending…" : "Send me a test"}
+                  </Button>
+                  <Button disabled={Boolean(busy) || !preview.to} onClick={() => sendOne(preview.contractor)}>
+                    {busy === preview.contractor.contractor_id
+                      ? "Sending…"
+                      : `${preview.contractor.sent_at ? "Send again" : "Send"} to ${preview.contractor.contractor_name}`}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </div>
+        ) : !data ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Contractor</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.contractors.map((c) => (
+                    <TableRow key={c.contractor_id}>
+                      <TableCell className="font-medium">{c.contractor_name}</TableCell>
+                      <TableCell className="text-sm">
+                        {c.email || <span className="text-amber-700">No email: add it under Users</span>}
+                      </TableCell>
+                      <TableCell className="text-right">{money(c.total)}</TableCell>
+                      <TableCell className="text-sm">
+                        {c.sent_at ? (
+                          <span className="text-emerald-700">
+                            Sent {fmtSent(c.sent_at)}
+                            {c.sent_by ? ` by ${c.sent_by}` : ""}
+                          </span>
+                        ) : c.last_failed ? (
+                          <span className="text-red-600">Last try failed</span>
+                        ) : (
+                          <span className="text-muted-foreground">Not sent</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Button size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => open(c)}>
+                          Preview
+                        </Button>
+                        {canSend && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={Boolean(busy) || !c.email}
+                            onClick={() => sendOne(c)}
+                          >
+                            {busy === c.contractor_id ? "Sending…" : c.sent_at ? "Resend" : "Send"}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {data.contractors.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                        No contractor pay this week.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            {canSend && (
+              <DialogFooter className="gap-2 sm:items-center">
+                {sendingAll && (
+                  <span className="text-sm text-muted-foreground sm:mr-auto">Sending {busy?.slice(4)}…</span>
+                )}
+                <Button disabled={Boolean(busy) || pending.length === 0} onClick={sendAll}>
+                  {pending.length ? `Send to all not sent yet (${pending.length})` : "Everyone has been sent"}
+                </Button>
+              </DialogFooter>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

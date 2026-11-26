@@ -222,6 +222,8 @@ GHL_BASE_URL = os.getenv("GHL_BASE_URL", "https://services.leadconnectorhq.com")
 GHL_API_VERSION = os.getenv("GHL_API_VERSION", "2021-07-28")
 # Optional From for Conversations emails (must be a mailbox GHL can send as).
 GHL_EMAIL_FROM = os.getenv("GHL_EMAIL_FROM", "").strip()
+# From for contractor pay emails (Peter). Must also be a mailbox GHL can send as.
+GHL_PAY_EMAIL_FROM = os.getenv("GHL_PAY_EMAIL_FROM", "payments@cleanonthego.com").strip()
 # Public Hub URL used in notification email links.
 HUB_PUBLIC_URL = os.getenv("HUB_PUBLIC_URL", "https://hub.cleanonthego.com").rstrip("/")
 # GHL internal Reputation (Firebase session tokens; seed via env or Django admin)

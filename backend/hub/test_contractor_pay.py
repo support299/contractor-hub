@@ -207,3 +207,115 @@ class ContractorPayTests(TestCase):
         self.assertIn(f"ded:supplies:{self.cara.id}:2026-10-18", ids)
         self.assertNotIn("basis", section["records"][0])
         self.assertEqual(HubPayOverride.objects.count(), 0)
+
+
+@patch("hub.services.contractor_pay.toronto_today", return_value=TODAY)
+@patch("hub.services.ghl.send_conversation_email", return_value=True)
+class PayEmailSendTests(TestCase):
+    def setUp(self):
+        self.cara = HubUser.objects.create(
+            name="Cara Smith",
+            email="cara@test.local",
+            role=HubUser.Role.CONTRACTOR,
+            jobber_id="J-CARA",
+            contractor_percent=Decimal("30"),
+            supplies_deduction=Decimal("10"),
+        )
+        self.dan = HubUser.objects.create(
+            name="Dan", role=HubUser.Role.CONTRACTOR, jobber_id="J-DAN", contractor_percent=Decimal("25")
+        )
+        self.peter = HubUser.objects.create(
+            name="Peter", email="peter@test.local", role=HubUser.Role.ADMIN, can_change_contractor_pay=True
+        )
+        self.office = HubUser.objects.create(name="Office", email="office@test.local", role=HubUser.Role.ADMIN)
+        for vid, who, client, tip in (("V1", [self.cara], "Globe & Co", "20"), ("V2", [self.cara, self.dan], "Acme", "0")):
+            v = HubPayVisit.objects.create(
+                jobber_visit_id=vid,
+                assigned_user_ids=[p.jobber_id for p in who],
+                visit_date=date(2026, 10, 20),
+                status="COMPLETED",
+                client_jobber_id=f"C-{vid}",
+                client_name=client,
+                visit_amount=Decimal("200"),
+                discount_share=Decimal("0"),
+                tip_share=Decimal(tip),
+                amount_rule="invoice",
+            )
+            v.assignees.set(who)
+        HubPayDeduction.objects.create(
+            contractor=self.cara, amount=Decimal("5"), date=date(2026, 10, 21), note="Mops"
+        )
+        self.url = f"/api/contractor-pay/weeks/{WEEK}/emails/"
+
+    def _pay_week(self):
+        self.assertEqual(_client(self.peter).post(f"/api/contractor-pay/weeks/{WEEK}/paid/").status_code, 200)
+
+    def test_only_paid_weeks(self, _send, _today):
+        r = _client(self.peter).get(self.url)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("paid", r.json()["detail"])
+
+    def test_preview_lists_clients_deductions_and_total(self, _send, _today):
+        self._pay_week()
+        overview = _client(self.office).get(self.url).json()
+        self.assertEqual(overview["from"], "payments@cleanonthego.com")
+        cara = next(c for c in overview["contractors"] if c["contractor_name"] == "Cara Smith")
+        # V1 60 + tip 20, V2 200×30%÷2 = 30, supplies -10, restock -5
+        self.assertEqual((cara["total"], cara["email"], cara["sent_at"]), ("95.00", "cara@test.local", None))
+
+        p = _client(self.office).get(f"{self.url}{self.cara.id}/").json()
+        self.assertEqual(p["subject"], "Your pay for Oct 18 – Oct 24, 2026: $95.00")
+        html = p["html"]
+        for text in ("Hi Cara,", "Globe &amp; Co", "Acme", "$80.00", "$30.00", "Supplies", "Restock: Mops", "-$5.00", "-$10.00", "Total: $95.00"):
+            self.assertIn(text, html)
+
+    def test_send_records_and_needs_pay_permission(self, send, _today):
+        self._pay_week()
+        target = f"{self.url}{self.cara.id}/"
+        self.assertEqual(_client(self.office).post(target, {}, format="json").status_code, 403)
+        self.assertEqual(_client(self.peter).post(target, {}, format="json").status_code, 200)
+        kwargs = send.call_args.kwargs
+        self.assertEqual((kwargs["email"], kwargs["email_from"]), ("cara@test.local", "payments@cleanonthego.com"))
+        cara = next(c for c in _client(self.peter).get(self.url).json()["contractors"] if c["contractor_name"] == "Cara Smith")
+        self.assertIsNotNone(cara["sent_at"])
+        self.assertEqual(cara["sent_by"], "Peter")
+        self.assertTrue(HubPayChangeLog.objects.filter(action="pay_email.sent").exists())
+
+    def test_test_send_goes_to_me_and_is_not_recorded(self, send, _today):
+        from hub.models import HubPayEmail
+
+        self._pay_week()
+        r = _client(self.peter).post(f"{self.url}{self.cara.id}/", {"test": True}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(send.call_args.kwargs["email"], "peter@test.local")
+        self.assertTrue(send.call_args.kwargs["subject"].startswith("[Test] "))
+        self.assertEqual(HubPayEmail.objects.count(), 0)
+
+    def test_no_email_or_ghl_failure(self, send, _today):
+        self._pay_week()
+        r = _client(self.peter).post(f"{self.url}{self.dan.id}/", {}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("no email", r.json()["detail"])
+        send.return_value = False
+        r = _client(self.peter).post(f"{self.url}{self.cara.id}/", {}, format="json")
+        self.assertEqual(r.status_code, 400)
+        cara = next(c for c in _client(self.peter).get(self.url).json()["contractors"] if c["contractor_name"] == "Cara Smith")
+        self.assertTrue(cara["last_failed"])
+        self.assertIsNone(cara["sent_at"])
+
+    def test_void_visits_left_out_and_adjustments_listed(self, _send, _today):
+        late = HubPayVisit.objects.create(
+            jobber_visit_id="V3", assigned_user_ids=["J-CARA"], visit_date=date(2026, 10, 22),
+            status="LATE", client_jobber_id="C-V3", client_name="Skipped Client",
+            visit_amount=Decimal("500"), discount_share=Decimal("0"), tip_share=Decimal("0"), amount_rule="invoice",
+        )
+        late.assignees.set([self.cara])
+        HubPayAdjustment.objects.create(
+            source_row_id="x", contractor=self.cara, visit=HubPayVisit.objects.get(jobber_visit_id="V2"),
+            amount=Decimal("7.50"), date=date(2026, 10, 23), note="Tip came in late",
+        )
+        self._pay_week()
+        html = _client(self.peter).get(f"{self.url}{self.cara.id}/").json()["html"]
+        self.assertNotIn("Skipped Client", html)
+        self.assertIn("Adjustment: Acme (Tip came in late)", html)
+        self.assertIn("Total: $102.50", html)

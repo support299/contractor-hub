@@ -90,7 +90,31 @@ export const fetchPayWeek = (week?: string) =>
 export const markWeekPaid = (weekStart: string) =>
   api(`/contractor-pay/weeks/${weekStart}/paid/`, { method: "POST" });
 
-export const fetchClientRules = () => api<ClientRules>("/contractor-pay/client-rules/");
+export type PayEmailStatus = {
+  contractor_id: string;
+  contractor_name: string;
+  email: string;
+  total: string;
+  sent_at: string | null;
+  sent_by: string | null;
+  sent_to: string | null;
+  last_failed: boolean;
+};
+
+export type PayEmails = { week_start: string; from: string; contractors: PayEmailStatus[] };
+
+export type PayEmailPreview = { to: string; from: string; subject: string; html: string };
+
+export const fetchPayEmails = (weekStart: string) =>
+  api<PayEmails>(`/contractor-pay/weeks/${weekStart}/emails/`);
+
+export const previewPayEmail = (weekStart: string, contractorId: string) =>
+  api<PayEmailPreview>(`/contractor-pay/weeks/${weekStart}/emails/${contractorId}/`);
+
+export const sendPayEmail = (weekStart: string, contractorId: string, test = false) =>
+  api(`/contractor-pay/weeks/${weekStart}/emails/${contractorId}/`, { method: "POST", body: { test } });
+
+export const fetchClientRules =() => api<ClientRules>("/contractor-pay/client-rules/");
 
 export const saveClientRule = (body: {
   client_jobber_id: string;

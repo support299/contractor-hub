@@ -355,8 +355,10 @@ def send_conversation_email(
     html: str,
     message: str = "",
     name: str = "",
+    email_from: str = "",
 ) -> bool:
-    """Send an email via GHL Conversations. Returns True on HTTP 200/201."""
+    """Send an email via GHL Conversations. Returns True on HTTP 200/201.
+    email_from overrides settings.GHL_EMAIL_FROM."""
     to = (email or "").strip()
     subject = (subject or "").strip()
     html = (html or "").strip()
@@ -383,7 +385,7 @@ def send_conversation_email(
             "message": text[:5000],
             "emailTo": to,
         }
-        email_from = (getattr(settings, "GHL_EMAIL_FROM", "") or "").strip()
+        email_from = (email_from or getattr(settings, "GHL_EMAIL_FROM", "") or "").strip()
         if email_from:
             payload["emailFrom"] = email_from
 

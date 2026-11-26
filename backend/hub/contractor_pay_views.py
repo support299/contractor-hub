@@ -6,6 +6,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.db.models import Count, Max
 from rest_framework import status
 from rest_framework.response import Response
@@ -22,6 +23,7 @@ from .models import (
 )
 from .permissions import CanChangeContractorPay, IsAdminRole, user_can_change_contractor_pay
 from .services import contractor_pay as pay
+from .services import pay_email
 
 MAX_AMOUNT = Decimal("100000")
 
@@ -306,3 +308,47 @@ class PayChangeLogView(_PayView):
                 for e in entries
             ]
         )
+
+
+def _paid_week_start(week) -> date:
+    ws = _date(week, "week")
+    if ws != pay.week_start(ws):
+        raise pay.PayError("A pay week starts on a Sunday.")
+    pay_email.paid_week(ws)
+    return ws
+
+
+class PayEmailsView(_PayView):
+    """GET /api/contractor-pay/weeks/<week>/emails/ : who gets a pay email, and who already has."""
+
+    def get(self, request, week):
+        ws = _paid_week_start(week)
+        return Response(
+            {
+                "week_start": ws.isoformat(),
+                "from": settings.GHL_PAY_EMAIL_FROM,
+                "contractors": pay_email.week_overview(ws),
+            }
+        )
+
+
+class PayEmailView(_PayView):
+    """GET  .../emails/<contractor_id>/ : preview.
+    POST .../emails/<contractor_id>/ : send. {"test": true} sends it to you instead."""
+
+    def _contractor(self, contractor_id) -> HubUser:
+        user = HubUser.objects.filter(id=contractor_id).first()
+        if user is None:
+            raise pay.PayError("Contractor not found.")
+        return user
+
+    def get(self, request, week, contractor_id):
+        ws = _paid_week_start(week)
+        email = pay_email.build_email(ws, self._contractor(contractor_id))
+        return Response({k: email[k] for k in ("to", "from", "subject", "html")})
+
+    def post(self, request, week, contractor_id):
+        ws = _paid_week_start(week)
+        test = request.data.get("test") is True
+        pay_email.send(ws, self._contractor(contractor_id), request, test=test)
+        return Response({"sent": True, "test": test})

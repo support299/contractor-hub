@@ -123,6 +123,16 @@ urlpatterns = [
         name="contractor-pay-mark-paid",
     ),
     path(
+        "contractor-pay/weeks/<str:week>/emails/",
+        contractor_pay_views.PayEmailsView.as_view(),
+        name="contractor-pay-emails",
+    ),
+    path(
+        "contractor-pay/weeks/<str:week>/emails/<uuid:contractor_id>/",
+        contractor_pay_views.PayEmailView.as_view(),
+        name="contractor-pay-email",
+    ),
+    path(
         "contractor-pay/client-rules/",
         contractor_pay_views.ClientPayRulesView.as_view(),
         name="contractor-pay-client-rules",
