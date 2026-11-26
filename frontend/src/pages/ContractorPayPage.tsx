@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -96,6 +97,7 @@ export default function ContractorPayPage() {
   const [editing, setEditing] = useState<PayRow | null>(null);
   const [paying, setPaying] = useState(false);
   const [emailsOpen, setEmailsOpen] = useState(false);
+  const [ask, confirmDialog] = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,13 +123,28 @@ export default function ContractorPayPage() {
 
   const payWeek = async () => {
     if (!data) return;
-    if (
-      !confirm(
-        `Mark ${fmtDate(data.week_start)} – ${fmtDate(data.week_end)} as paid ($${data.summary.total_paid})? ` +
-          "The week is then frozen. Later increases are paid as adjustments.",
-      )
-    )
-      return;
+    const people = data.summary.by_contractor.length;
+    const ok = await ask({
+      title: `Mark ${fmtDate(data.week_start)} – ${fmtDate(data.week_end)} as paid?`,
+      body: (
+        <>
+          <p>
+            Total <strong className="text-foreground">${data.summary.total_paid}</strong> for {people}{" "}
+            {people === 1 ? "person" : "people"}. Please check the lines are right first.
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>The week's pay is locked as it is now. You can't change pay or add restocks to it, and later changes to percentages or client pay rules won't affect it.</li>
+            <li>A tip or higher invoice that comes in later is added to the next open week as an adjustment. Lower invoices are left alone.</li>
+            <li>Insights gets the week as paid, and the "Pay emails" button turns on.</li>
+            <li>No money or emails are sent by this step.</li>
+          </ul>
+          <p className="font-semibold text-red-600">This can't be undone.</p>
+        </>
+      ),
+      confirmLabel: "Yes, mark paid",
+      destructive: true,
+    });
+    if (!ok) return;
     setPaying(true);
     try {
       await markWeekPaid(data.week_start);
@@ -332,7 +349,7 @@ export default function ContractorPayPage() {
                             variant="ghost"
                             aria-label="Remove restock"
                             onClick={async () => {
-                              if (!confirm("Remove this restock deduction?")) return;
+                              if (!(await ask({ title: "Remove this restock deduction?", confirmLabel: "Remove", destructive: true }))) return;
                               try {
                                 await deleteRestock(r.deduction_id!);
                                 load();
@@ -368,6 +385,7 @@ export default function ContractorPayPage() {
 
       <OverrideDialog row={editing} onClose={() => setEditing(null)} onSaved={load} />
       {emailsOpen && data?.paid && <PayEmailsDialog week={data} onClose={() => setEmailsOpen(false)} />}
+      {confirmDialog}
     </div>
   );
 }
@@ -556,6 +574,7 @@ function ClientRulesSection({ canEdit, onChanged }: { canEdit: boolean; onChange
   const [rule, setRule] = useState<"percent" | "fixed">("fixed");
   const [fixed, setFixed] = useState("");
   const [note, setNote] = useState("");
+  const [ask, confirmDialog] = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -590,6 +609,7 @@ function ClientRulesSection({ canEdit, onChanged }: { canEdit: boolean; onChange
 
   return (
     <section className="space-y-2">
+      {confirmDialog}
       <h2 className="font-semibold">Client pay rules</h2>
       <p className="text-sm text-muted-foreground">
         Clients without a rule pay the contractor's %. A fixed amount is per visit, split between
@@ -620,7 +640,7 @@ function ClientRulesSection({ canEdit, onChanged }: { canEdit: boolean; onChange
                       variant="ghost"
                       aria-label="Remove rule"
                       onClick={async () => {
-                        if (!confirm(`Remove the rule for ${r.client_name}?`)) return;
+                        if (!(await ask({ title: `Remove the pay rule for ${r.client_name}?`, confirmLabel: "Remove", destructive: true }))) return;
                         try {
                           await deleteClientRule(r.id);
                           load();
@@ -774,6 +794,7 @@ function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void
   const [data, setData] = useState<PayEmails | null>(null);
   const [preview, setPreview] = useState<(PayEmailPreview & { contractor: PayEmailStatus }) | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [ask, confirmDialog] = useConfirm();
   const canSend = week.can_edit;
 
   const load = useCallback(async () => {
@@ -800,7 +821,16 @@ function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void
   };
 
   const sendOne = async (c: PayEmailStatus, test = false) => {
-    if (!test && c.sent_at && !confirm(`${c.contractor_name} already got this email. Send it again?`)) return;
+    if (
+      !test &&
+      c.sent_at &&
+      !(await ask({
+        title: `Send ${c.contractor_name}'s pay email again?`,
+        body: <p>They already got it on {fmtSent(c.sent_at)}{c.sent_by ? ` (sent by ${c.sent_by})` : ""}.</p>,
+        confirmLabel: "Send again",
+      }))
+    )
+      return;
     setBusy(test ? "test" : c.contractor_id);
     try {
       await sendPayEmail(week.week_start, c.contractor_id, test);
@@ -823,8 +853,21 @@ function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void
 
   const sendAll = async () => {
     if (!pending.length) return;
-    const skip = noEmail.length ? ` ${noEmail.length} without an email will be skipped.` : "";
-    if (!confirm(`Send the pay email to ${pending.length} contractor(s)?${skip}`)) return;
+    const ok = await ask({
+      title: `Send the pay email to ${pending.length} contractor${pending.length === 1 ? "" : "s"}?`,
+      body: (
+        <>
+          <p>{pending.map((c) => c.contractor_name).join(", ")}</p>
+          {noEmail.length > 0 && (
+            <p className="text-amber-700">
+              Skipped, no email in the Hub: {noEmail.map((c) => c.contractor_name).join(", ")}
+            </p>
+          )}
+        </>
+      ),
+      confirmLabel: "Send",
+    });
+    if (!ok) return;
     let sent = 0;
     const failed: string[] = [];
     for (const [i, c] of pending.entries()) {
@@ -845,6 +888,8 @@ function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void
   const range = `${fmtDate(week.week_start)} – ${fmtDate(week.week_end)}`;
 
   return (
+    <>
+    {confirmDialog}
     <Dialog open onOpenChange={(o) => !o && !sendingAll && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -975,5 +1020,6 @@ function PayEmailsDialog({ week, onClose }: { week: PayWeek; onClose: () => void
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
