@@ -186,7 +186,8 @@ export function UserFormDialog({ open, onOpenChange, user, users }: Props) {
     reader.readAsDataURL(file);
   };
 
-  const parseNum = (v: string) => (v.trim() ? Number(v) : undefined);
+  // An empty box clears the value (null), so e.g. removing a supplies deduction works.
+  const parseNum = (v: string) => (v.trim() ? Number(v) : null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

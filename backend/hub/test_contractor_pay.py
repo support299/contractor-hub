@@ -110,6 +110,15 @@ class ContractorPayTests(TestCase):
         self.assertEqual([r["amount_paid"] for r in rows if r["type"] == "restock_deduction"], ["-12.50"])
         self.assertEqual(pay.summarize(rows)["by_contractor"][0]["total"], "37.50")  # 60 - 10 - 12.50
 
+    def test_clearing_supplies_deduction_on_user_removes_it(self, _today):
+        self._visit("V1", [self.cara])
+        self.assertTrue(self._rows(type="supplies_deduction"))
+        r = _client(self.office).patch(f"/api/users/{self.cara.id}/", {"suppliesDeduction": None}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.cara.refresh_from_db()
+        self.assertIsNone(self.cara.supplies_deduction)
+        self.assertEqual(self._rows(type="supplies_deduction"), [])
+
     def test_override_needs_pay_permission_and_is_logged(self, _today):
         v = self._visit("V1", [self.cara])
         body = {"visit_id": str(v.id), "contractor_id": str(self.cara.id), "amount": "80", "reason": "Agreed rate"}

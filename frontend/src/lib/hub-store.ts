@@ -31,11 +31,11 @@ export interface HubUser {
   position?: Position;
   jobberId?: string;
   ghlId?: string;
-  regularRate?: number;
-  driveTimeRate?: number;
-  fcRate?: number;
-  trRate?: number;
-  suppliesDeduction?: number;
+  regularRate?: number | null;
+  driveTimeRate?: number | null;
+  fcRate?: number | null;
+  trRate?: number | null;
+  suppliesDeduction?: number | null;
   contractorPercent?: number | null;
   canChangeContractorPay?: boolean;
   canApproveLeave?: boolean;

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 import { useUsers, type HubUser } from "@/lib/hub-store";
-import { Pencil, Plus, UserCircle2 } from "lucide-react";
+import { Pencil, Plus, Search, UserCircle2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AlertsManager } from "@/components/admin/AlertsManager";
 import { EmailNotifyManager } from "@/components/admin/EmailNotifyManager";
@@ -15,6 +16,24 @@ export default function SettingsPage() {
   const users = useUsers();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<HubUser | null>(null);
+  const [query, setQuery] = useState("");
+
+  const shown = useMemo(() => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return users;
+    return users.filter((u) => {
+      const text = [u.name, u.email, u.role, u.position ?? "", ...u.sectors].join(" ").toLowerCase();
+      const phone = u.phone.replace(/\D/g, "");
+      // Every word must match: "active"/"inactive" by status, otherwise name, email, type,
+      // position, sector, or 3+ digits of the phone.
+      return words.every((w) => {
+        if (w === "active") return u.status === "active";
+        if (w === "inactive") return u.status !== "active";
+        const digits = w.replace(/\D/g, "");
+        return text.includes(w) || (digits.length >= 3 && digits === w.replace(/[\s()+.-]/g, "") && phone.includes(digits));
+      });
+    });
+  }, [users, query]);
 
   const openAdd = () => {
     setEditing(null);
@@ -45,7 +64,18 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="users" className="space-y-4 mt-4">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                aria-label="Search users"
+                placeholder="Search name, email, phone, type…"
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
             <Button onClick={openAdd}>
               <Plus className="h-4 w-4" /> Add new user
             </Button>
@@ -53,11 +83,17 @@ export default function SettingsPage() {
 
           <section className="bg-card border rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b">
-              <h2 className="font-semibold">Users ({users.length})</h2>
+              <h2 className="font-semibold">
+                Users ({query.trim() ? `${shown.length} of ${users.length}` : users.length})
+              </h2>
             </div>
             {users.length === 0 ? (
               <div className="px-6 py-10 text-center text-sm text-muted-foreground">
                 No users yet. Click “Add new user” to create one.
+              </div>
+            ) : shown.length === 0 ? (
+              <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+                No users match “{query.trim()}”.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -79,7 +115,7 @@ export default function SettingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((u) => (
+                    {shown.map((u) => (
                       <tr key={u.id} className="border-t align-middle">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
